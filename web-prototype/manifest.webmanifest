@@ -1,0 +1,16 @@
+{
+  "name": "MaidItQuick",
+  "short_name": "MaidItQuick",
+  "description": "Fast, trusted home services in your neighbourhood.",
+  "start_url": "./portal.html",
+  "display": "standalone",
+  "background_color": "#07170f",
+  "theme_color": "#07170f",
+  "icons": [
+    {
+      "src": "brand-icon.jpeg",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}

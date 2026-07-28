@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MakeItQuick — Home help, nearby</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <section class="intro" id="intro" aria-label="MaidItQuick opening animation">
+    <div class="intro-scene">
+      <div class="intro-brand"><span class="brand-mark">M</span><span>maiditquick</span></div>
+      <div class="home-outline">
+        <div class="roof"></div><div class="house-body"><div class="door"><span class="door-knob"></span></div></div>
+      </div>
+      <p class="intro-line">A little help is on its way.</p>
+    </div>
+    <button class="skip-intro" id="skipIntro">Skip</button>
+  </section>
+  <main class="phone-shell">
+    <header>
+      <div class="brand"><span class="brand-mark">M</span><span>maiditquick</span></div>
+      <button class="avatar" aria-label="Profile">SK</button>
+    </header>
+    <section class="location-bar" aria-label="Service location">
+      <span class="pin">⌖</span><div><small>DELIVERING TO</small><strong>Uttarpara, Hooghly 712258</strong></div><button class="change-location">Change</button>
+    </section>
+    <section class="hero">
+      <p class="eyebrow">HOME HELP, ON YOUR TIME</p>
+      <h1>Your home,<br><em>handled quickly.</em></h1>
+      <p>Book trusted local help for the everyday jobs that need doing.</p>
+      <div class="promise"><span>✓</span> Verified local experts <span>•</span> From ₹99</div>
+    </section>
+    <section class="section-head"><h2>What do you need?</h2><button>See all</button></section>
+    <section class="services" aria-label="Services">
+      <button class="service-card selected" data-service="Home cleaning"><span class="icon">✦</span><strong>Home<br>cleaning</strong><small>From ₹149</small></button>
+      <button class="service-card" data-service="Dishwashing"><span class="icon">◌</span><strong>Dish<br>washing</strong><small>From ₹99</small></button>
+      <button class="service-card" data-service="Laundry & ironing"><span class="icon">⌇</span><strong>Laundry &<br>ironing</strong><small>From ₹119</small></button>
+      <button class="service-card" data-service="Kitchen cleaning"><span class="icon">⌂</span><strong>Kitchen<br>cleaning</strong><small>From ₹129</small></button>
+    </section>
+    <section class="section-head"><h2>Book your time</h2></section>
+    <section class="schedule-card">
+      <div class="booking-type"><button class="active" data-type="Scheduled">Schedule</button><button data-type="Instant">Instant</button></div>
+      <div class="date-row"><button class="date active"><small>TODAY</small><strong>27</strong><span>Jul</span></button><button class="date"><small>MON</small><strong>28</strong><span>Jul</span></button><button class="date"><small>TUE</small><strong>29</strong><span>Jul</span></button><button class="date"><small>WED</small><strong>30</strong><span>Jul</span></button></div>
+      <p class="time-label">Choose a start time</p><div class="time-row"><button class="time active">10:00 AM</button><button class="time">12:00 PM</button><button class="time">3:00 PM</button></div>
+    </section>
+    <section class="trust-strip"><span>★ 4.8/5</span><span>12,000+ local jobs done</span><span>✓ Background checked</span></section>
+  </main>
+  <aside class="booking-bar"><div><small id="summary-type">SCHEDULED · TODAY, 10:00 AM</small><strong id="summary-service">Home cleaning</strong></div><button id="continueButton">Continue <span>→</span></button></aside>
+  <dialog id="confirmation"><button class="close" aria-label="Close">×</button><div class="confirmation-icon">✓</div><p class="eyebrow">READY TO BOOK</p><h2 id="dialog-title">Home cleaning</h2><p id="dialog-copy">Today at 10:00 AM. Next, we’ll collect your address and show the final price.</p><button id="dialog-continue">Add address</button></dialog>
+  <script>document.title = 'MaidItQuick — Home help, nearby';</script>
+  <script src="app.js"></script>
+</body>
+</html>
