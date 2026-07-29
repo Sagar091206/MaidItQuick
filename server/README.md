@@ -11,6 +11,20 @@ Before production, supply accounts and credentials for phone OTP, SMTP email del
 2. Set your actual MySQL password plus a unique admin email and password.
 3. Run mvn spring-boot:run.
 
+For simulator-only development without local MySQL credentials, run with the
+H2 in-memory datasource:
+
+```bash
+SPRING_DATASOURCE_URL='jdbc:h2:mem:makeitquick;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1' \
+SPRING_DATASOURCE_USERNAME=sa \
+SPRING_DATASOURCE_PASSWORD='' \
+SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.h2.Driver \
+mvn spring-boot:run
+```
+
+Partner OTP endpoints return `devOtp` while no SMS provider is configured, so
+local mobile testing can complete the OTP screen without external SMS delivery.
+
 The first run creates the configured admin account only if its email does not already exist. Do not put real credentials in source code or share your .env file.
 
 ## API documentation
