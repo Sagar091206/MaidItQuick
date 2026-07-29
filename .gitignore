@@ -11,6 +11,7 @@ server/uploads/
 server/target/
 
 # Flutter/Dart generated files
+.tooling/
 mobile/.dart_tool/
 mobile/.flutter-plugins-dependencies
 mobile/.pub-cache/
