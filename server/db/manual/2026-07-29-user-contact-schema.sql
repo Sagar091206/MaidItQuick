@@ -30,6 +30,11 @@ SET email = ''
 WHERE role = 'WORKER'
   AND email LIKE 'partner+%@phone.maiditquick.local';
 
+UPDATE users
+SET email_notifications = 0
+WHERE role = 'WORKER'
+  AND email = '';
+
 ALTER TABLE users MODIFY email VARCHAR(255) NOT NULL;
 ALTER TABLE users MODIFY phone VARCHAR(255) NOT NULL;
 
