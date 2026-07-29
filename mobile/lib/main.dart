@@ -21,6 +21,8 @@ class _MaidItQuickAppState extends State<MaidItQuickApp> {
 
   void _chooseRole(UserRole role) => setState(() => _chosenRole = role);
 
+  void _backToWelcome() => setState(() => _chosenRole = null);
+
   void _authenticated(Session session) {
     setState(() {
       _session = session;
@@ -39,10 +41,16 @@ class _MaidItQuickAppState extends State<MaidItQuickApp> {
       theme: maidItQuickTheme(),
       home: session != null
           ? session.role == 'WORKER'
-              ? PartnerJourneyScreen(api: _api, session: session, onLogout: _logout)
-              : CustomerJourneyScreen(api: _api, session: session, onLogout: _logout)
+              ? PartnerJourneyScreen(
+                  api: _api, session: session, onLogout: _logout)
+              : CustomerJourneyScreen(
+                  api: _api, session: session, onLogout: _logout)
           : _chosenRole != null
-              ? AuthScreen(api: _api, role: _chosenRole!, onAuthenticated: _authenticated)
+              ? AuthScreen(
+                  api: _api,
+                  role: _chosenRole!,
+                  onBack: _backToWelcome,
+                  onAuthenticated: _authenticated)
               : WelcomeScreen(onChooseRole: _chooseRole),
     );
   }

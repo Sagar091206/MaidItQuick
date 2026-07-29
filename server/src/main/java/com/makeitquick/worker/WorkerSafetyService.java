@@ -14,16 +14,13 @@ public class WorkerSafetyService {
 
     public boolean eligibleForDispatch(UserAccount worker) {
         return profiles.findByUser(worker)
-                .map(profile -> profile.getKycStatus() == VerificationStatus.APPROVED
-                        && profile.getBackgroundCheckStatus() == VerificationStatus.APPROVED
-                        && profile.getAvailability() == AvailabilityStatus.AVAILABLE)
+                .map(profile -> profile.isReadyForJobs() && profile.getAvailability() == AvailabilityStatus.AVAILABLE)
                 .orElse(false);
     }
 
     public long eligibleAvailableWorkerCount() {
-        return profiles.findAll().stream().filter(profile ->
-                profile.getKycStatus() == VerificationStatus.APPROVED
-                        && profile.getBackgroundCheckStatus() == VerificationStatus.APPROVED
-                        && profile.getAvailability() == AvailabilityStatus.AVAILABLE).count();
+        return profiles.findAll().stream()
+                .filter(profile -> profile.isReadyForJobs() && profile.getAvailability() == AvailabilityStatus.AVAILABLE)
+                .count();
     }
 }
