@@ -27,7 +27,8 @@ public class NotificationService {
 
     public void send(UserAccount recipient, NotificationType type, String title, String message) {
         notifications.save(new AppNotification(recipient, type, title, message));
-        if (emailEnabled && recipient.isEmailNotifications() && mailSender.getIfAvailable() != null) {
+        if (emailEnabled && recipient.isEmailNotifications() && hasDeliverableEmail(recipient)
+                && mailSender.getIfAvailable() != null) {
             try {
                 SimpleMailMessage email = new SimpleMailMessage();
                 email.setFrom(fromAddress);
@@ -39,5 +40,9 @@ public class NotificationService {
                 // The in-app notification is already saved; delivery failures can be retried later.
             }
         }
+    }
+
+    private boolean hasDeliverableEmail(UserAccount recipient) {
+        return recipient.getEmail() != null && !recipient.getEmail().isBlank();
     }
 }
