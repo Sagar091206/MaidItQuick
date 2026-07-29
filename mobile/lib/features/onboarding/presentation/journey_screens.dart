@@ -92,10 +92,12 @@ class AuthScreen extends StatefulWidget {
       {super.key,
       required this.api,
       required this.role,
+      required this.onBack,
       required this.onAuthenticated});
 
   final ApiClient api;
   final UserRole role;
+  final VoidCallback onBack;
   final ValueChanged<Session> onAuthenticated;
 
   @override
@@ -231,6 +233,15 @@ class _AuthScreenState extends State<AuthScreen> {
     });
   }
 
+  void _handleAuthBack() {
+    if (_submitting) return;
+    if (_partnerChallenge != null) {
+      _changePartnerPhone();
+      return;
+    }
+    widget.onBack();
+  }
+
   void _showMessage(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context)
@@ -246,7 +257,13 @@ class _AuthScreenState extends State<AuthScreen> {
         ? 'Create your ${widget.role.label} account'
         : 'Welcome back';
     return Scaffold(
-      appBar: AppBar(title: Text(widget.role.label)),
+      appBar: AppBar(
+        leading: IconButton(
+            onPressed: _submitting ? null : widget.onBack,
+            icon: const Icon(Icons.arrow_back),
+            tooltip: 'Back'),
+        title: Text(widget.role.label),
+      ),
       body: SafeArea(
         child: Form(
           key: _formKey,
@@ -347,7 +364,13 @@ class _AuthScreenState extends State<AuthScreen> {
         : 'OTP sent to ${_maskPhone(challenge.phone)}';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Partner')),
+      appBar: AppBar(
+        leading: IconButton(
+            onPressed: _submitting ? null : _handleAuthBack,
+            icon: const Icon(Icons.arrow_back),
+            tooltip: 'Back'),
+        title: const Text('Partner'),
+      ),
       body: SafeArea(
         child: Form(
           key: _formKey,
