@@ -128,6 +128,15 @@ public class WorkerSafetyController {
         return view(profiles.save(profile));
     }
 
+    @PostMapping(value = "/me/address-proof", consumes = "multipart/form-data")
+    public Map<String, Object> uploadAddressProof(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestPart("document") MultipartFile document) {
+        WorkerProfile profile = profileForWorker(requireUser(authorization));
+        profile.submitAddressProof(store(document, DOCUMENT_TYPES, "Upload a PDF, JPG, or PNG address proof"));
+        return view(profiles.save(profile));
+    }
+
     @PostMapping(value = "/me/police-verification", consumes = "multipart/form-data")
     public Map<String, Object> uploadPoliceVerification(
             @RequestHeader(value = "Authorization", required = false) String authorization,
@@ -277,6 +286,7 @@ public class WorkerSafetyController {
         view.put("panName", profile.getPanName());
         view.put("selfieStatus", profile.getSelfieStatus());
         view.put("addressStatus", profile.getAddressStatus());
+        view.put("addressProofSubmitted", profile.hasAddressProof());
         view.put("backgroundCheckStatus", profile.getBackgroundCheckStatus());
         view.put("availability", profile.getAvailability());
         view.put("payoutMethod", profile.getPayoutMethod());

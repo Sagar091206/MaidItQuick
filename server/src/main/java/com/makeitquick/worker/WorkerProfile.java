@@ -90,6 +90,7 @@ public class WorkerProfile {
     public String getCity() { return city; }
     public String getState() { return state; }
     public String getPinCode() { return pinCode; }
+    public boolean hasAddressProof() { return addressDocumentRef != null && !addressDocumentRef.isBlank(); }
     public String getPayoutMethod() { return payoutMethod; }
     public String getPayoutAccountHolderName() { return payoutAccountHolderName; }
     public String getBankAccountLast4() { return bankAccountLast4; }
@@ -134,8 +135,13 @@ public class WorkerProfile {
         city = cityValue;
         state = stateValue;
         pinCode = pin;
+        if (ref != null && !ref.isBlank()) addressDocumentRef = ref;
+        updateAddressStatus();
+    }
+
+    public void submitAddressProof(String ref) {
         addressDocumentRef = ref;
-        addressStatus = VerificationStatus.PENDING;
+        updateAddressStatus();
     }
 
     public void submitPoliceVerification(String ref) {
@@ -210,6 +216,14 @@ public class WorkerProfile {
         return payoutMethod != null && !payoutMethod.isBlank() && payoutAccountHolderName != null && !payoutAccountHolderName.isBlank();
     }
 
+    public boolean hasAddressDetails() {
+        return currentAddress != null && !currentAddress.isBlank()
+                && permanentAddress != null && !permanentAddress.isBlank()
+                && city != null && !city.isBlank()
+                && state != null && !state.isBlank()
+                && pinCode != null && !pinCode.isBlank();
+    }
+
     public void setAvailability(AvailabilityStatus value) {
         availability = value;
     }
@@ -222,5 +236,11 @@ public class WorkerProfile {
 
     private VerificationStatus orDefault(VerificationStatus status) {
         return status == null ? VerificationStatus.NOT_SUBMITTED : status;
+    }
+
+    private void updateAddressStatus() {
+        addressStatus = hasAddressDetails() && hasAddressProof()
+                ? VerificationStatus.PENDING
+                : VerificationStatus.NOT_SUBMITTED;
     }
 }
