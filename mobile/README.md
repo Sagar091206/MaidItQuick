@@ -18,10 +18,23 @@ lib/
 
 ## Setup
 
-1. Install the Flutter SDK and Android Studio.
+1. Install the Flutter SDK. Install Android Studio for Android emulator testing and Xcode for iOS simulator testing.
 2. Run `flutter pub get` in this folder.
 3. Start the Java API.
-4. For Android emulator use `http://10.0.2.2:8080/api` as the API base URL; for a real phone use the deployed HTTPS API URL.
+4. The app defaults to the local API URL for each simulator:
+   - Android emulator: `http://10.0.2.2:8080/api`
+   - iOS simulator: `http://127.0.0.1:8080/api`
+   - Real devices: pass a deployed HTTPS API URL with `--dart-define=API_BASE_URL=...`
 5. Run `flutter run`.
 
-The current machine does not have Flutter installed, so this boilerplate is intentionally not generated or built until the Flutter SDK is available.
+## Simulator targets
+
+Recommended local test devices:
+
+- Android: Pixel 7 or Pixel 8 emulator.
+- iOS: iPhone 17 Pro simulator.
+
+```bash
+flutter run -d <android-emulator-id>
+flutter run -d <ios-simulator-id>
+```
