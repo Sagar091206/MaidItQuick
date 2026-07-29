@@ -43,14 +43,17 @@ class ApiClient {
     required Uint8List bytes,
     required String fileName,
     required String mimeType,
+    String fileField = 'document',
+    Map<String, String> fields = const {},
   }) async {
     final url = _url(path);
     _logRequest('POST multipart', url);
     final request = http.MultipartRequest('POST', url)
       ..headers.addAll({'Authorization': 'Bearer $token'})
+      ..fields.addAll(fields)
       ..files.add(
         http.MultipartFile.fromBytes(
-          'document',
+          fileField,
           bytes,
           filename: fileName,
           contentType: _mediaType(mimeType),
@@ -82,7 +85,8 @@ class ApiClient {
     }
     if (response.statusCode >= 400) {
       final message = payload is Map ? payload['message']?.toString() : null;
-      throw ApiException(message ?? 'Request failed (${response.statusCode})', response.statusCode);
+      throw ApiException(message ?? 'Request failed (${response.statusCode})',
+          response.statusCode);
     }
     return payload;
   }

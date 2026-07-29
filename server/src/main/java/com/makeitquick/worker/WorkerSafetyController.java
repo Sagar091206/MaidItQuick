@@ -1,23 +1,27 @@
 package com.makeitquick.worker;
 
+import com.makeitquick.operations.AvailabilityStatus;
 import com.makeitquick.security.Role;
 import com.makeitquick.security.Session;
 import com.makeitquick.security.SessionRepository;
 import com.makeitquick.security.UserAccount;
-import com.makeitquick.operations.AvailabilityStatus;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.List;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,6 +29,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -33,8 +38,11 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/workers")
 @CrossOrigin(origins = "*")
+@Validated
 public class WorkerSafetyController {
-    private static final Set<String> ACCEPTED_TYPES = Set.of("application/pdf", "image/jpeg", "image/png");
+    private static final long MAX_UPLOAD_BYTES = 5L * 1024 * 1024;
+    private static final Set<String> DOCUMENT_TYPES = Set.of("application/pdf", "image/jpeg", "image/png");
+    private static final Set<String> IMAGE_TYPES = Set.of("image/jpeg", "image/png");
 
     private final WorkerProfileRepository profiles;
     private final SessionRepository sessions;
@@ -54,25 +62,93 @@ public class WorkerSafetyController {
         return view(profileForWorker(requireUser(authorization)));
     }
 
+    @PostMapping("/me/consent")
+    public Map<String, Object> acceptConsent(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @Valid @RequestBody ConsentInput input) {
+        WorkerProfile profile = profileForWorker(requireUser(authorization));
+        if (!input.accepted()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Consent must be accepted before onboarding");
+        }
+        profile.acceptConsent();
+        return view(profiles.save(profile));
+    }
+
     @PostMapping(value = "/me/kyc", consumes = "multipart/form-data")
     public Map<String, Object> uploadKyc(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestPart("document") MultipartFile document) {
+        return uploadIdentityDocument(authorization, document);
+    }
+
+    @PostMapping(value = "/me/identity-document", consumes = "multipart/form-data")
+    public Map<String, Object> uploadIdentityDocument(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestPart("document") MultipartFile document) {
         WorkerProfile profile = profileForWorker(requireUser(authorization));
-        if (document.isEmpty() || !ACCEPTED_TYPES.contains(document.getContentType())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Upload a PDF, JPG, or PNG identity document");
-        }
-        try {
-            Files.createDirectories(uploadDirectory);
-            String extension = document.getContentType().equals("application/pdf") ? ".pdf"
-                    : document.getContentType().equals("image/png") ? ".png" : ".jpg";
-            String fileName = UUID.randomUUID() + extension;
-            Files.copy(document.getInputStream(), uploadDirectory.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
-            profile.submitKyc(fileName);
-            return view(profiles.save(profile));
-        } catch (IOException exception) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Document could not be stored");
-        }
+        profile.submitKyc(store(document, DOCUMENT_TYPES, "Upload a PDF, JPG, or PNG identity document"));
+        return view(profiles.save(profile));
+    }
+
+    @PostMapping(value = "/me/pan", consumes = "multipart/form-data")
+    public Map<String, Object> uploadPan(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam("panNumber") @Pattern(regexp = "^[A-Za-z]{5}[0-9]{4}[A-Za-z]$") String panNumber,
+            @RequestParam("panName") @NotBlank String panName,
+            @RequestPart("document") MultipartFile document) {
+        WorkerProfile profile = profileForWorker(requireUser(authorization));
+        profile.submitPan(
+                panNumber.trim().toUpperCase(),
+                panName.trim(),
+                store(document, DOCUMENT_TYPES, "Upload a PDF, JPG, or PNG PAN document"));
+        return view(profiles.save(profile));
+    }
+
+    @PostMapping(value = "/me/profile-photo", consumes = "multipart/form-data")
+    public Map<String, Object> uploadProfilePhoto(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestPart("document") MultipartFile document) {
+        WorkerProfile profile = profileForWorker(requireUser(authorization));
+        profile.submitSelfie(store(document, IMAGE_TYPES, "Upload a JPG or PNG profile photo"));
+        return view(profiles.save(profile));
+    }
+
+    @PostMapping("/me/address")
+    public Map<String, Object> saveAddress(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @Valid @RequestBody AddressInput input) {
+        WorkerProfile profile = profileForWorker(requireUser(authorization));
+        profile.submitAddress(
+                input.currentAddress().trim(),
+                input.permanentAddress().trim(),
+                input.city().trim(),
+                input.state().trim(),
+                input.pinCode().trim(),
+                null);
+        return view(profiles.save(profile));
+    }
+
+    @PostMapping(value = "/me/police-verification", consumes = "multipart/form-data")
+    public Map<String, Object> uploadPoliceVerification(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestPart("document") MultipartFile document) {
+        WorkerProfile profile = profileForWorker(requireUser(authorization));
+        profile.submitPoliceVerification(store(document, DOCUMENT_TYPES, "Upload a PDF, JPG, or PNG police verification document"));
+        return view(profiles.save(profile));
+    }
+
+    @PostMapping("/me/service-readiness")
+    public Map<String, Object> saveServiceReadiness(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @Valid @RequestBody ServiceReadinessInput input) {
+        WorkerProfile profile = profileForWorker(requireUser(authorization));
+        profile.submitServiceReadiness(
+                input.serviceCategories().trim(),
+                input.workLocations().trim(),
+                input.experienceSummary().trim(),
+                input.availabilitySummary().trim(),
+                input.partnerCodeAccepted());
+        return view(profiles.save(profile));
     }
 
     @PostMapping("/me/payout-details")
@@ -80,7 +156,12 @@ public class WorkerSafetyController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @Valid @RequestBody PayoutInput input) {
         WorkerProfile profile = profileForWorker(requireUser(authorization));
-        profile.setPayout(input.accountLast4(), input.ifsc().toUpperCase());
+        profile.setPayout(
+                input.method().trim().toUpperCase(),
+                input.accountHolderName().trim(),
+                blankToNull(input.accountLast4()),
+                blankToNull(input.ifsc()) == null ? null : input.ifsc().trim().toUpperCase(),
+                blankToNull(input.upiId()));
         return view(profiles.save(profile));
     }
 
@@ -89,8 +170,8 @@ public class WorkerSafetyController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @Valid @RequestBody AvailabilityInput input) {
         WorkerProfile profile = profileForWorker(requireUser(authorization));
-        if (input.status() == AvailabilityStatus.AVAILABLE && profile.getKycStatus() != VerificationStatus.APPROVED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Approved KYC is required before going available");
+        if (input.status() == AvailabilityStatus.AVAILABLE && !profile.isReadyForJobs()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "All compliance and payout checks must be approved before going available");
         }
         profile.setAvailability(input.status());
         return view(profiles.save(profile));
@@ -118,8 +199,8 @@ public class WorkerSafetyController {
             @PathVariable Long id) {
         requireAdmin(authorization);
         WorkerProfile profile = getProfile(id);
-        if (profile.getKycStatus() != VerificationStatus.PENDING) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only pending KYC can be approved");
+        if (!profile.hasSubmittedApprovalPack()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "All required partner onboarding items must be submitted before approval");
         }
         profile.approve();
         return view(profiles.save(profile));
@@ -131,11 +212,29 @@ public class WorkerSafetyController {
             @PathVariable Long id) {
         requireAdmin(authorization);
         WorkerProfile profile = getProfile(id);
-        if (profile.getKycStatus() != VerificationStatus.PENDING) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only pending KYC can be rejected");
-        }
         profile.reject();
         return view(profiles.save(profile));
+    }
+
+    private String store(MultipartFile file, Set<String> acceptedTypes, String message) {
+        if (file.isEmpty() || file.getSize() > MAX_UPLOAD_BYTES || !acceptedTypes.contains(file.getContentType())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+        }
+        try {
+            Files.createDirectories(uploadDirectory);
+            String extension = extensionFor(file.getContentType());
+            String fileName = UUID.randomUUID() + extension;
+            Files.copy(file.getInputStream(), uploadDirectory.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
+            return fileName;
+        } catch (IOException exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Document could not be stored");
+        }
+    }
+
+    private String extensionFor(String contentType) {
+        if ("application/pdf".equals(contentType)) return ".pdf";
+        if ("image/png".equals(contentType)) return ".png";
+        return ".jpg";
     }
 
     private UserAccount requireUser(String authorization) {
@@ -164,26 +263,83 @@ public class WorkerSafetyController {
 
     private Map<String, Object> view(WorkerProfile profile) {
         Map<String, Object> view = new HashMap<>();
-        view.put("id", profile.getId()); view.put("userId", profile.getUser().getId());
-        view.put("name", profile.getUser().getName()); view.put("email", profile.getUser().getEmail());
-        view.put("kycStatus", profile.getKycStatus()); view.put("backgroundCheckStatus", profile.getBackgroundCheckStatus());
-        view.put("availability", profile.getAvailability()); view.put("payoutDetailsVerified", profile.isPayoutDetailsVerified());
-        view.put("latitude", profile.getLastLatitude()); view.put("longitude", profile.getLastLongitude());
+        view.put("id", profile.getId());
+        view.put("userId", profile.getUser().getId());
+        view.put("name", profile.getUser().getName());
+        view.put("email", profile.getUser().getEmail());
+        view.put("phone", profile.getUser().getPhone());
+        view.put("consentAccepted", profile.isConsentAccepted());
+        view.put("consentAcceptedAt", profile.getConsentAcceptedAt());
+        view.put("kycStatus", profile.getKycStatus());
+        view.put("identityStatus", profile.getKycStatus());
+        view.put("panStatus", profile.getPanStatus());
+        view.put("panLast4", last4(profile.getPanNumber()));
+        view.put("panName", profile.getPanName());
+        view.put("selfieStatus", profile.getSelfieStatus());
+        view.put("addressStatus", profile.getAddressStatus());
+        view.put("backgroundCheckStatus", profile.getBackgroundCheckStatus());
+        view.put("availability", profile.getAvailability());
+        view.put("payoutMethod", profile.getPayoutMethod());
+        view.put("payoutAccountHolderName", profile.getPayoutAccountHolderName());
+        view.put("bankAccountLast4", profile.getBankAccountLast4());
+        view.put("bankIfsc", profile.getBankIfsc());
+        view.put("upiId", profile.getUpiId());
+        view.put("payoutDetailsVerified", profile.isPayoutDetailsVerified());
+        view.put("serviceReadinessComplete", profile.isPartnerCodeAccepted());
+        view.put("serviceCategories", profile.getServiceCategories());
+        view.put("workLocations", profile.getWorkLocations());
+        view.put("experienceSummary", profile.getExperienceSummary());
+        view.put("availabilitySummary", profile.getAvailabilitySummary());
+        view.put("readyForJobs", profile.isReadyForJobs());
+        view.put("latitude", profile.getLastLatitude());
+        view.put("longitude", profile.getLastLongitude());
         view.put("locationUpdatedAt", profile.getLocationUpdatedAt());
         return view;
     }
 
-    record PayoutInput(@NotBlank String accountLast4, @NotBlank String ifsc) {
-        PayoutInput {
-            if (!accountLast4.matches("\\d{4}")) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter only the final four account digits");
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String last4(String value) {
+        if (value == null || value.length() < 4) return null;
+        return value.substring(value.length() - 4);
+    }
+
+    record ConsentInput(boolean accepted) {}
+    record AddressInput(@NotBlank String currentAddress, @NotBlank String permanentAddress,
+                        @NotBlank String city, @NotBlank String state,
+                        @Pattern(regexp = "^\\d{6}$") String pinCode) {}
+    record ServiceReadinessInput(@NotBlank String serviceCategories, @NotBlank String workLocations,
+                                 @NotBlank String experienceSummary, @NotBlank String availabilitySummary,
+                                 boolean partnerCodeAccepted) {
+        ServiceReadinessInput {
+            if (!partnerCodeAccepted) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Accept the Partner code of conduct to continue");
             }
-            if (!ifsc.matches("^[A-Za-z]{4}0[A-Za-z0-9]{6}$")) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a valid IFSC code");
+        }
+    }
+    record PayoutInput(@NotBlank String method, @NotBlank String accountHolderName,
+                       String accountLast4, String ifsc, String upiId) {
+        PayoutInput {
+            String normalized = method == null ? "" : method.trim().toUpperCase();
+            if (!normalized.equals("BANK") && !normalized.equals("UPI")) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose BANK or UPI payout");
+            }
+            if (normalized.equals("BANK")) {
+                if (accountLast4 == null || !accountLast4.matches("\\d{4}")) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter only the final four account digits");
+                }
+                if (ifsc == null || !ifsc.matches("^[A-Za-z]{4}0[A-Za-z0-9]{6}$")) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a valid IFSC code");
+                }
+            }
+            if (normalized.equals("UPI") && (upiId == null || !upiId.matches("^[A-Za-z0-9._-]{2,}@[A-Za-z]{2,}$"))) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a valid UPI ID");
             }
         }
     }
     record AvailabilityInput(AvailabilityStatus status) {}
-    record LocationInput(@jakarta.validation.constraints.DecimalMin("-90.0") @jakarta.validation.constraints.DecimalMax("90.0") double latitude,
-                         @jakarta.validation.constraints.DecimalMin("-180.0") @jakarta.validation.constraints.DecimalMax("180.0") double longitude) {}
+    record LocationInput(@DecimalMin("-90.0") @DecimalMax("90.0") double latitude,
+                         @DecimalMin("-180.0") @DecimalMax("180.0") double longitude) {}
 }
