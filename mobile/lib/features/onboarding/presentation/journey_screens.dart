@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/brand_theme.dart';
@@ -291,6 +292,8 @@ class _AuthScreenState extends State<AuthScreen> {
               if (_isRegistering) ...[
                 TextFormField(
                   controller: _name,
+                  autocorrect: false,
+                  enableSuggestions: false,
                   textCapitalization: TextCapitalization.words,
                   decoration: const InputDecoration(
                       labelText: 'Full name',
@@ -305,6 +308,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 controller: _email,
                 keyboardType: TextInputType.emailAddress,
                 autocorrect: false,
+                enableSuggestions: false,
                 decoration: const InputDecoration(
                     labelText: 'Email address',
                     prefixIcon: Icon(Icons.email_outlined)),
@@ -316,6 +320,8 @@ class _AuthScreenState extends State<AuthScreen> {
               TextFormField(
                 controller: _password,
                 obscureText: true,
+                autocorrect: false,
+                enableSuggestions: false,
                 decoration: const InputDecoration(
                     labelText: 'Password',
                     prefixIcon: Icon(Icons.lock_outline)),
@@ -390,6 +396,8 @@ class _AuthScreenState extends State<AuthScreen> {
                 if (_isRegistering) ...[
                   TextFormField(
                     controller: _name,
+                    autocorrect: false,
+                    enableSuggestions: false,
                     textCapitalization: TextCapitalization.words,
                     decoration: const InputDecoration(
                         labelText: 'Full name',
@@ -403,6 +411,9 @@ class _AuthScreenState extends State<AuthScreen> {
                 TextFormField(
                   controller: _phone,
                   keyboardType: TextInputType.phone,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  inputFormatters: const [_PhoneInputFormatter()],
                   decoration: const InputDecoration(
                     labelText: 'Phone number',
                     helperText: 'Use country code. India defaults to +91.',
@@ -417,6 +428,11 @@ class _AuthScreenState extends State<AuthScreen> {
                   controller: _otp,
                   keyboardType: TextInputType.number,
                   maxLength: 6,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  inputFormatters: const [
+                    _AsciiDigitInputFormatter(maxLength: 6)
+                  ],
                   decoration: InputDecoration(
                     labelText: 'OTP',
                     prefixIcon: const Icon(Icons.password_outlined),
@@ -1657,6 +1673,62 @@ class _TrustItem extends StatelessWidget {
             style: TextStyle(
                 color: BrandColors.muted, fontSize: compact ? 11 : 14)),
       ]);
+}
+
+class _PhoneInputFormatter extends TextInputFormatter {
+  const _PhoneInputFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    final buffer = StringBuffer();
+    for (final rune in newValue.text.runes) {
+      final digit = _digitForRune(rune);
+      if (digit != null) {
+        buffer.write(digit);
+      } else if (rune == 43 && buffer.isEmpty) {
+        buffer.write('+');
+      }
+    }
+    final text = buffer.toString();
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+}
+
+class _AsciiDigitInputFormatter extends TextInputFormatter {
+  const _AsciiDigitInputFormatter({this.maxLength});
+
+  final int? maxLength;
+
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    final buffer = StringBuffer();
+    for (final rune in newValue.text.runes) {
+      final digit = _digitForRune(rune);
+      if (digit == null) continue;
+      if (maxLength != null && buffer.length >= maxLength!) break;
+      buffer.write(digit);
+    }
+    final text = buffer.toString();
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+}
+
+String? _digitForRune(int rune) {
+  if (rune >= 0x30 && rune <= 0x39) return String.fromCharCode(rune);
+  for (final start in [0x0660, 0x06F0, 0x0966, 0x09E6, 0x0A66, 0x0AE6]) {
+    if (rune >= start && rune <= start + 9) {
+      return String.fromCharCode(0x30 + rune - start);
+    }
+  }
+  return null;
 }
 
 String _displayDate(DateTime dateTime) {
