@@ -47,7 +47,7 @@ class WelcomeScreen extends StatelessWidget {
             SizedBox(height: compact ? 12 : 16),
             _RoleCard(
               icon: Icons.handshake_outlined,
-              title: 'I am a maid partner',
+              title: 'I am a partner',
               subtitle: 'Create a partner account, submit your KYC and track approval.',
               action: 'Continue as partner',
               outlined: true,
@@ -86,6 +86,9 @@ class _AuthScreenState extends State<AuthScreen> {
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _phone = TextEditingController();
+  final _otp = TextEditingController();
+  OtpChallenge? _partnerChallenge;
   bool _isRegistering = true;
   bool _submitting = false;
 
@@ -94,10 +97,16 @@ class _AuthScreenState extends State<AuthScreen> {
     _name.dispose();
     _email.dispose();
     _password.dispose();
+    _phone.dispose();
+    _otp.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
+    if (widget.role == UserRole.partner) {
+      await _submitPartner();
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
     setState(() => _submitting = true);
     try {
@@ -122,12 +131,85 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  Future<void> _submitPartner() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _submitting = true);
+    try {
+      final repository = AuthRepository(widget.api);
+      final challenge = _partnerChallenge;
+      if (challenge == null) {
+        final next = _isRegistering ? await repository.startPartnerSignup(name: _name.text.trim(), phone: _phone.text.trim()) : await repository.startPartnerLogin(phone: _phone.text.trim());
+        if (!mounted) return;
+        setState(() {
+          _partnerChallenge = next;
+          _otp.clear();
+        });
+        _showMessage('OTP sent to ${next.phone}.');
+      } else {
+        final session = await repository.verifyPartnerOtp(
+          phone: challenge.phone,
+          purpose: _isRegistering ? 'signup' : 'login',
+          otp: _otp.text.trim(),
+        );
+        if (!mounted) return;
+        widget.onAuthenticated(session);
+      }
+    } on ApiException catch (error) {
+      _showMessage(error.message);
+    } catch (_) {
+      _showMessage('Unable to reach MaidItQuick. Check that the local API is running.');
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  void _changePartnerPhone() {
+    setState(() {
+      _partnerChallenge = null;
+      _otp.clear();
+    });
+  }
+
+  Future<void> _resendPartnerOtp() async {
+    final challenge = _partnerChallenge;
+    if (challenge == null) return;
+    setState(() => _submitting = true);
+    try {
+      final repository = AuthRepository(widget.api);
+      final next = _isRegistering ? await repository.startPartnerSignup(name: _name.text.trim(), phone: challenge.phone) : await repository.startPartnerLogin(phone: challenge.phone);
+      if (!mounted) return;
+      setState(() {
+        _partnerChallenge = next;
+        _otp.clear();
+      });
+      _showMessage('OTP resent to ${next.phone}.');
+    } on ApiException catch (error) {
+      _showMessage(error.message);
+    } catch (_) {
+      _showMessage('Unable to reach MaidItQuick. Check that the local API is running.');
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  void _toggleMode() {
+    setState(() {
+      _isRegistering = !_isRegistering;
+      _partnerChallenge = null;
+      _otp.clear();
+    });
+  }
+
   void _showMessage(String message) {
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (widget.role == UserRole.partner) return _buildPartnerAuth();
+
     final title = _isRegistering ? 'Create your ${widget.role.label} account' : 'Welcome back';
     return Scaffold(
       appBar: AppBar(title: Text(widget.role.label)),
@@ -142,9 +224,7 @@ class _AuthScreenState extends State<AuthScreen> {
               Text(title, style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800)),
               const SizedBox(height: 8),
               Text(
-                widget.role == UserRole.customer
-                    ? 'Book trusted help in your locality.'
-                    : 'Complete your onboarding and start receiving jobs after approval.',
+                widget.role == UserRole.customer ? 'Book trusted help in your locality.' : 'Complete your onboarding and start receiving jobs after approval.',
                 style: const TextStyle(color: BrandColors.muted),
               ),
               const SizedBox(height: 28),
@@ -180,7 +260,7 @@ class _AuthScreenState extends State<AuthScreen> {
               ),
               const SizedBox(height: 12),
               TextButton(
-                onPressed: _submitting ? null : () => setState(() => _isRegistering = !_isRegistering),
+                onPressed: _submitting ? null : _toggleMode,
                 child: Text(_isRegistering ? 'Already have an account? Sign in' : 'New to MaidItQuick? Create an account'),
               ),
             ],
@@ -188,6 +268,102 @@ class _AuthScreenState extends State<AuthScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildPartnerAuth() {
+    final challenge = _partnerChallenge;
+    final title = challenge == null
+        ? _isRegistering
+            ? 'Create your Partner account'
+            : 'Sign in as Partner'
+        : 'Enter OTP';
+    final subtitle = challenge == null
+        ? _isRegistering
+            ? 'Start with your name and phone number. We will verify it with an OTP.'
+            : 'Enter your phone number and we will send you an OTP.'
+        : 'OTP sent to ${_maskPhone(challenge.phone)}';
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Partner')),
+      body: SafeArea(
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              const Icon(Icons.handshake_outlined, size: 46, color: BrandColors.lime),
+              const SizedBox(height: 18),
+              Text(title, style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              Text(subtitle, style: const TextStyle(color: BrandColors.muted)),
+              const SizedBox(height: 28),
+              if (challenge == null) ...[
+                if (_isRegistering) ...[
+                  TextFormField(
+                    controller: _name,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(labelText: 'Full name', prefixIcon: Icon(Icons.person_outline)),
+                    validator: (value) => value == null || value.trim().isEmpty ? 'Enter your name' : null,
+                  ),
+                  const SizedBox(height: 14),
+                ],
+                TextFormField(
+                  controller: _phone,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone number',
+                    helperText: 'Use country code. India defaults to +91.',
+                    prefixIcon: Icon(Icons.phone_outlined),
+                  ),
+                  validator: (value) => value == null || value.trim().length < 8 ? 'Enter a valid phone number' : null,
+                ),
+              ] else ...[
+                TextFormField(
+                  controller: _otp,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  decoration: InputDecoration(
+                    labelText: 'OTP',
+                    prefixIcon: const Icon(Icons.password_outlined),
+                    counterText: '',
+                    helperText: challenge.devOtp == null ? 'Code expires in 10 minutes.' : 'Dev OTP: ${challenge.devOtp}',
+                  ),
+                  validator: (value) => value == null || !RegExp(r'^\d{6}$').hasMatch(value.trim()) ? 'Enter the six-digit OTP' : null,
+                ),
+                const SizedBox(height: 10),
+                TextButton.icon(onPressed: _submitting ? null : _changePartnerPhone, icon: const Icon(Icons.edit_outlined), label: const Text('Change phone number')),
+              ],
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: _submitting ? null : _submit,
+                child: _submitting
+                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: BrandColors.evergreen))
+                    : Text(challenge == null
+                        ? _isRegistering
+                            ? 'Continue'
+                            : 'Send OTP'
+                        : 'Verify and continue'),
+              ),
+              if (challenge == null) ...[
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: _submitting ? null : _toggleMode,
+                  child: Text(_isRegistering ? 'Already have an account? Sign in' : 'New to MaidItQuick? Create an account'),
+                ),
+              ] else ...[
+                const SizedBox(height: 12),
+                TextButton(onPressed: _submitting ? null : _resendPartnerOtp, child: const Text('Resend OTP')),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _maskPhone(String phone) {
+    if (phone.length <= 6) return phone;
+    return '${phone.substring(0, phone.length - 6)}******${phone.substring(phone.length - 3)}';
   }
 }
 
@@ -362,7 +538,9 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
   }
 
   void _showMessage(String message) {
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 
   @override
@@ -438,9 +616,8 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
                   DropdownButtonFormField<String>(
                     initialValue: _service,
                     decoration: const InputDecoration(labelText: 'Service'),
-                    items: _services
-                        .map((service) => DropdownMenuItem(value: service['name']?.toString(), child: Text('${service['name']} — ₹${((service['pricePaise'] ?? 0) as num) ~/ 100}')))
-                        .toList(),
+                    items:
+                        _services.map((service) => DropdownMenuItem(value: service['name']?.toString(), child: Text('${service['name']} — ₹${((service['pricePaise'] ?? 0) as num) ~/ 100}'))).toList(),
                     onChanged: (value) => setState(() => _service = value),
                   ),
                   const SizedBox(height: 14),
@@ -463,7 +640,8 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
                     label: Text(_booking ? 'Requesting...' : 'Request this service'),
                   ),
                   const SizedBox(height: 10),
-                  const Text('No payment is collected in this MVP. The request is created through the live local API.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: BrandColors.muted)),
+                  const Text('No payment is collected in this MVP. The request is created through the live local API.',
+                      textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: BrandColors.muted)),
                 ],
               ),
             ),
@@ -599,7 +777,9 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
   }
 
   void _showMessage(String message) {
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 
   @override
@@ -680,10 +860,7 @@ class _RoleCard extends StatelessWidget {
           SizedBox(height: compact ? 4 : 6),
           Text(subtitle, style: TextStyle(color: BrandColors.muted, height: 1.3, fontSize: compact ? 13 : 14)),
           SizedBox(height: compact ? 10 : 16),
-          if (outlined)
-            OutlinedButton(onPressed: onTap, child: Text(action))
-          else
-            FilledButton(onPressed: onTap, child: Text(action)),
+          if (outlined) OutlinedButton(onPressed: onTap, child: Text(action)) else FilledButton(onPressed: onTap, child: Text(action)),
         ]),
       ),
     );
@@ -721,7 +898,8 @@ class _AvailabilityCard extends StatelessWidget {
         child: Row(children: [
           Icon(Icons.circle, color: color, size: 14),
           const SizedBox(width: 10),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(data['label']?.toString() ?? 'Availability', style: const TextStyle(fontWeight: FontWeight.w800)),
             const SizedBox(height: 3),
             Text(data['message']?.toString() ?? '', style: const TextStyle(color: BrandColors.muted)),
@@ -742,7 +920,11 @@ class _PartnerStatusCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final approved = status == 'APPROVED' || status == 'AVAILABLE';
     final pending = status == 'PENDING';
-    final color = approved ? BrandColors.lime : pending ? Colors.amber : BrandColors.muted;
+    final color = approved
+        ? BrandColors.lime
+        : pending
+            ? Colors.amber
+            : BrandColors.muted;
     return Card(
       child: ListTile(
         leading: Icon(icon, color: color),
