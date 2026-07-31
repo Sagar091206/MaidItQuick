@@ -32,6 +32,8 @@ public class SecurityConfig {
                                 "/app/**",
                                 "/error",
                                 "/api/auth/**",
+                                "/api/v1/auth/**",
+                                "/api/customer/signup/**",
                                 "/api/health",
                                 "/api/maps/browser-key",
                                 "/api/availability/**",
@@ -41,6 +43,16 @@ public class SecurityConfig {
                                 "/v3/api-docs/**")
                         .permitAll()
                         .anyRequest().authenticated())
+                // Missing or invalid credentials on a protected endpoint return
+                // 401 with the same JSON shape as ApiExceptionHandler errors, so
+                // the mobile client can surface one consistent message.
+                .exceptionHandling(e -> e.authenticationEntryPoint((request, response, ex) -> {
+                    response.setStatus(401);
+                    response.setContentType("application/json");
+                    response.setCharacterEncoding("UTF-8");
+                    response.getWriter().write("{\"timestamp\":\"%s\",\"status\":401,\"error\":\"Unauthorized\",\"message\":\"Please sign in\"}"
+                            .formatted(java.time.Instant.now().toString()));
+                }))
                 .addFilterBefore(sessionFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }

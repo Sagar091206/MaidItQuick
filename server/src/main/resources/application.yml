@@ -4,17 +4,40 @@ spring:
   datasource:
     url: ${MYSQL_URL:jdbc:mysql://localhost:3306/makeitquick?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Kolkata}
     username: ${MYSQL_USER:root}
-    password: ${MYSQL_PASSWORD:change-me-in-environment}
+    password: ${MYSQL_PASSWORD:Rishi@042405}
   jpa:
     hibernate:
       ddl-auto: update
     open-in-view: false
 server:
   port: ${PORT:8080}
+  # HTTPS is production-ready and disabled by default for local development.
+  # Enable it by exporting SSL_ENABLED=true and pointing SSL_KEYSTORE at a
+  # PKCS12 keystore (e.g. from a load balancer or Let's Encrypt).
+  ssl:
+    enabled: ${SSL_ENABLED:false}
+    key-store: ${SSL_KEYSTORE:}
+    key-store-password: ${SSL_KEYSTORE_PASSWORD:}
+    key-store-type: ${SSL_KEYSTORE_TYPE:PKCS12}
 app:
   security:
     session-hours: 24
     reset-minutes: 30
+    # HS256 signing secret for the customer JWT issued by /api/v1/auth. Must be
+    # at least 32 characters in production (export JWT_SECRET).
+    jwt-secret: ${JWT_SECRET:makeitquick-local-dev-secret-change-me-0123456789abcdef}
+    jwt-expiry-days: ${JWT_EXPIRY_DAYS:30}
+    # Customer OTP policy (unified /api/v1/auth flow).
+    otp:
+      expiry-seconds: ${OTP_EXPIRY_SECONDS:60}
+      max-attempts: ${OTP_MAX_ATTEMPTS:5}
+      max-sends: ${OTP_MAX_SENDS:4}
+      send-window-minutes: ${OTP_SEND_WINDOW_MINUTES:10}
+  sms:
+    # When false, the SMS provider is bypassed and OTPs are logged and echoed
+    # back as devOtp for local development. Enable with SMS_ENABLED=true and
+    # implement SmsSender with a real provider.
+    enabled: ${SMS_ENABLED:false}
   uploads:
     directory: ${KYC_UPLOAD_DIRECTORY:uploads/kyc}
   maps:

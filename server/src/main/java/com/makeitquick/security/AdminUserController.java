@@ -13,11 +13,11 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/admin/users")
 public class AdminUserController {
     private final UserRepository users;
-    private final SessionRepository sessions;
+    private final SessionResolver resolver;
 
-    AdminUserController(UserRepository users, SessionRepository sessions) {
+    AdminUserController(UserRepository users, SessionResolver resolver) {
         this.users = users;
-        this.sessions = sessions;
+        this.resolver = resolver;
     }
 
     @GetMapping
@@ -29,8 +29,7 @@ public class AdminUserController {
     }
 
     private void requireAdmin(String authorization) {
-        String token = authorization == null ? "" : authorization.replaceFirst("(?i)^Bearer\\s+", "");
-        Role role = sessions.findByToken(token).filter(Session::valid).map(session -> session.getUser().getRole())
+        Role role = resolver.fromBearer(authorization).map(user -> user.getRole())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Please sign in"));
         if (role != Role.ADMIN) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin access required");
     }

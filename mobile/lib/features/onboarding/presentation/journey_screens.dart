@@ -1,10 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/brand_theme.dart';
 import '../../../core/document_picker.dart';
+import '../../../shared/widgets/brand_primary_button.dart';
+import '../../../shared/widgets/otp_text_field.dart';
 import '../../auth/data/auth_repository.dart';
+import '../../profile/presentation/complete_profile_screen.dart';
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key, required this.onChooseRole});
@@ -47,7 +52,7 @@ class WelcomeScreen extends StatelessWidget {
               icon: Icons.home_outlined,
               title: 'I need home help',
               subtitle:
-                  'Create a customer account, add your address and book a service.',
+                  'Sign in with your mobile number, add your address and book a service.',
               action: 'Continue as customer',
               compact: compact,
               onTap: () => onChooseRole(UserRole.customer),
@@ -99,7 +104,7 @@ class AuthScreen extends StatefulWidget {
   final ApiClient api;
   final UserRole role;
   final VoidCallback onBack;
-  final ValueChanged<Session> onAuthenticated;
+  final Future<void> Function(Session session) onAuthenticated;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -107,22 +112,30 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _customerDetailsFormKey = GlobalKey<FormState>();
+  final _customerOtpFormKey = GlobalKey<FormState>();
   final _name = TextEditingController();
-  final _email = TextEditingController();
-  final _password = TextEditingController();
   final _phone = TextEditingController();
   final _otp = TextEditingController();
+  final _customerOtp = TextEditingController();
   OtpChallenge? _partnerChallenge;
+  OtpChallenge? _customerChallenge;
+  Timer? _customerOtpTimer;
+  int _customerOtpSecondsRemaining = 0;
+  _CountryCode _customerCountry = _customerCountries.first;
   bool _isRegistering = true;
   bool _submitting = false;
+  bool _verified = false;
+  String _otpCode = '';
+  Key _otpBoxesKey = UniqueKey();
 
   @override
   void dispose() {
+    _customerOtpTimer?.cancel();
     _name.dispose();
-    _email.dispose();
-    _password.dispose();
     _phone.dispose();
     _otp.dispose();
+    _customerOtp.dispose();
     super.dispose();
   }
 
@@ -131,22 +144,62 @@ class _AuthScreenState extends State<AuthScreen> {
       await _submitPartner();
       return;
     }
-    if (!_formKey.currentState!.validate()) return;
+    await _submitCustomer();
+  }
+
+  Future<void> _submitCustomer() async {
+    final challenge = _customerChallenge;
+    final form = challenge == null
+        ? _customerDetailsFormKey
+        : _customerOtpFormKey;
+    if (!form.currentState!.validate()) return;
     setState(() => _submitting = true);
     try {
       final repository = AuthRepository(widget.api);
-      if (_isRegistering) {
-        await repository.register(
-          name: _name.text.trim(),
-          email: _email.text.trim(),
-          password: _password.text,
-          role: widget.role,
+      final phone = _e164CustomerPhone(_phone.text.trim());
+      if (challenge == null) {
+        final next = await repository.sendOtp(phone: phone);
+        if (!mounted) return;
+        setState(() {
+          _customerChallenge = next;
+          _otpCode = '';
+          _otpBoxesKey = UniqueKey();
+        });
+        _startCustomerOtpTimer(next.expiresInSeconds);
+        _showMessage('OTP sent to ${next.phone}.');
+      } else {
+        final result = await repository.verifyOtp(
+          phone: challenge.phone,
+          otp: _otpCode,
         );
+        if (!mounted) return;
+        final session = result.session;
+        setState(() => _verified = true);
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+        if (!mounted) return;
+        if (session != null) {
+          await widget.onAuthenticated(session);
+          return;
+        }
+        final pendingToken = result.pendingToken;
+        if (pendingToken == null || pendingToken.isEmpty) {
+          setState(() => _verified = false);
+          _showMessage('Could not complete verification. Try again.');
+          return;
+        }
+        final created = await Navigator.of(context).push<Session>(
+          MaterialPageRoute(
+            builder: (context) => CompleteProfileScreen(
+              api: widget.api,
+              phone: result.phone,
+              pendingToken: pendingToken,
+            ),
+          ),
+        );
+        if (created != null && mounted) {
+          await widget.onAuthenticated(created);
+        }
       }
-      final session = await repository.login(
-          email: _email.text.trim(), password: _password.text);
-      if (!mounted) return;
-      widget.onAuthenticated(session);
     } on ApiException catch (error) {
       _showMessage(error.message);
     } catch (_) {
@@ -181,8 +234,46 @@ class _AuthScreenState extends State<AuthScreen> {
           otp: _otp.text.trim(),
         );
         if (!mounted) return;
-        widget.onAuthenticated(session);
+        await widget.onAuthenticated(session);
       }
+    } on ApiException catch (error) {
+      _showMessage(error.message);
+    } catch (_) {
+      _showMessage(
+          'Unable to reach MaidItQuick. Check that the local API is running.');
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  void _changeCustomerPhone() {
+    _customerOtpTimer?.cancel();
+    setState(() {
+      _customerChallenge = null;
+      _customerOtpSecondsRemaining = 0;
+      _otpCode = '';
+      _verified = false;
+      _otpBoxesKey = UniqueKey();
+    });
+    _customerOtp.clear();
+  }
+
+  Future<void> _resendCustomerOtp() async {
+    final challenge = _customerChallenge;
+    if (challenge == null) return;
+    setState(() => _submitting = true);
+    try {
+      final repository = AuthRepository(widget.api);
+      final next = await repository.sendOtp(phone: challenge.phone);
+      if (!mounted) return;
+      setState(() {
+        _customerChallenge = next;
+        _otpCode = '';
+        _otpBoxesKey = UniqueKey();
+      });
+      _customerOtp.clear();
+      _startCustomerOtpTimer(next.expiresInSeconds);
+      _showMessage('OTP resent to ${next.phone}.');
     } on ApiException catch (error) {
       _showMessage(error.message);
     } catch (_) {
@@ -234,8 +325,21 @@ class _AuthScreenState extends State<AuthScreen> {
     });
   }
 
+  void _handleCustomerBack() {
+    if (_submitting) return;
+    if (_customerChallenge != null) {
+      _changeCustomerPhone();
+      return;
+    }
+    widget.onBack();
+  }
+
   void _handleAuthBack() {
     if (_submitting) return;
+    if (widget.role == UserRole.customer && _customerChallenge != null) {
+      _changeCustomerPhone();
+      return;
+    }
     if (_partnerChallenge != null) {
       _changePartnerPhone();
       return;
@@ -250,110 +354,281 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  void _startCustomerOtpTimer(int seconds) {
+    _customerOtpTimer?.cancel();
+    setState(() => _customerOtpSecondsRemaining = seconds);
+    _customerOtpTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_customerOtpSecondsRemaining <= 1) {
+        timer.cancel();
+        setState(() => _customerOtpSecondsRemaining = 0);
+        return;
+      }
+      setState(() => _customerOtpSecondsRemaining--);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.role == UserRole.partner) return _buildPartnerAuth();
+    return _buildCustomerAuth();
+  }
 
-    final title = _isRegistering
-        ? 'Create your ${widget.role.label} account'
-        : 'Welcome back';
+  Widget _buildCustomerAuth() {
+    final challenge = _customerChallenge;
+    final awaitingOtp = challenge != null;
+    final compact = MediaQuery.sizeOf(context).height < 780;
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-            onPressed: _submitting ? null : widget.onBack,
+            onPressed: _submitting ? null : _handleCustomerBack,
             icon: const Icon(Icons.arrow_back),
             tooltip: 'Back'),
-        title: Text(widget.role.label),
+        title: const Text('Customer'),
       ),
       body: SafeArea(
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(24),
-            children: [
-              Icon(
-                  widget.role == UserRole.customer
-                      ? Icons.home_outlined
-                      : Icons.handshake_outlined,
-                  size: 46,
-                  color: BrandColors.lime),
-              const SizedBox(height: 18),
-              Text(title,
-                  style: const TextStyle(
-                      fontSize: 30, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 8),
-              Text(
-                widget.role == UserRole.customer
-                    ? 'Book trusted help in your locality.'
-                    : 'Complete your onboarding and start receiving jobs after approval.',
-                style: const TextStyle(color: BrandColors.muted),
-              ),
-              const SizedBox(height: 28),
-              if (_isRegistering) ...[
-                TextFormField(
-                  controller: _name,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(
-                      labelText: 'Full name',
-                      prefixIcon: Icon(Icons.person_outline)),
-                  validator: (value) => value == null || value.trim().isEmpty
-                      ? 'Enter your name'
-                      : null,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 600),
+            child: ListView(
+              padding: EdgeInsets.fromLTRB(20, compact ? 10 : 20, 20, 24),
+              children: [
+                _AuthBrandHeader(
+                  compact: compact,
+                  title: awaitingOtp
+                      ? 'Verify your number'
+                      : 'Welcome to MaidItQuick',
+                  subtitle: awaitingOtp
+                      ? 'We sent a six-digit code to ${_maskPhone(challenge.phone)}'
+                      : 'Sign in securely with your mobile number. No passwords needed.',
+                  step: awaitingOtp ? 2 : 1,
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 280),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, 0.05),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      child: child,
+                    ),
+                  ),
+                  child: awaitingOtp
+                      ? _buildCustomerOtpCard(compact, challenge)
+                      : _buildCustomerDetailsCard(compact),
+                ),
               ],
-              TextFormField(
-                controller: _email,
-                keyboardType: TextInputType.emailAddress,
-                autocorrect: false,
-                enableSuggestions: false,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomerDetailsCard(bool compact) {
+    return Card(
+      key: const ValueKey('customer-details'),
+      child: Padding(
+        padding: EdgeInsets.all(compact ? 18 : 26),
+        child: Form(
+          key: _customerDetailsFormKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              DropdownButtonFormField<_CountryCode>(
+                initialValue: _customerCountry,
+                isExpanded: true,
                 decoration: const InputDecoration(
-                    labelText: 'Email address',
-                    prefixIcon: Icon(Icons.email_outlined)),
-                validator: (value) => value == null || !value.contains('@')
-                    ? 'Enter a valid email address'
-                    : null,
+                  labelText: 'Country',
+                  prefixIcon: Icon(Icons.public_outlined),
+                ),
+                items: _customerCountries
+                    .map((country) => DropdownMenuItem<_CountryCode>(
+                          value: country,
+                          child: Text('${country.name} (${country.code})'),
+                        ))
+                    .toList(),
+                onChanged: _submitting
+                    ? null
+                    : (country) {
+                        if (country == null) return;
+                        setState(() {
+                          _customerCountry = country;
+                          _phone.clear();
+                        });
+                      },
               ),
               const SizedBox(height: 14),
               TextFormField(
-                controller: _password,
-                obscureText: true,
+                controller: _phone,
+                keyboardType: TextInputType.phone,
                 autocorrect: false,
                 enableSuggestions: false,
-                decoration: const InputDecoration(
-                    labelText: 'Password',
-                    prefixIcon: Icon(Icons.lock_outline)),
-                validator: (value) => value == null || value.length < 8
-                    ? 'Use at least 8 characters'
-                    : null,
+                autofillHints: const [
+                  AutofillHints.telephoneNumberNational
+                ],
+                inputFormatters: [
+                  _NationalNumberInputFormatter(
+                      _customerCountry.nationalDigits)
+                ],
+                decoration: InputDecoration(
+                  labelText: 'Mobile number',
+                  helperText:
+                      '${_customerCountry.nationalDigits}-digit number',
+                  prefixIcon: const Icon(Icons.phone_outlined),
+                  prefixText: '${_customerCountry.code} ',
+                ),
+                validator: _validateCustomerPhone,
+                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 24),
-              FilledButton(
-                onPressed: _submitting ? null : _submit,
-                child: _submitting
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: BrandColors.evergreen))
-                    : Text(_isRegistering
-                        ? 'Create account and continue'
-                        : 'Sign in'),
+              BrandPrimaryButton(
+                onPressed: _submitting || !_customerPhoneValid
+                    ? null
+                    : _submit,
+                icon: Icons.sms_outlined,
+                label: 'Send OTP',
+                busy: _submitting,
+              ),
+              const SizedBox(height: 8),
+              const _AuthDivider(label: 'or continue with'),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _submitting
+                    ? null
+                    : () => _showMessage(
+                        'Google Sign-In is not configured for this local MVP. Use OTP to continue.'),
+                icon: const Icon(Icons.g_mobiledata),
+                label: const Text('Continue with Google'),
               ),
               const SizedBox(height: 12),
-              TextButton(
-                onPressed: _submitting ? null : _toggleMode,
-                child: Text(_isRegistering
-                    ? 'Already have an account? Sign in'
-                    : 'New to MaidItQuick? Create an account'),
-              ),
+              _AuthTermsRow(onShowMessage: _showMessage),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildCustomerOtpCard(bool compact, OtpChallenge challenge) {
+    final resendLabel = _customerOtpSecondsRemaining > 0
+        ? 'Resend in ${_customerOtpSecondsRemaining}s'
+        : 'Resend OTP';
+    return Card(
+      key: const ValueKey('customer-otp'),
+      child: Padding(
+        padding: EdgeInsets.all(compact ? 18 : 26),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 320),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) => ScaleTransition(
+            scale: animation,
+            child: FadeTransition(opacity: animation, child: child),
+          ),
+          child: _verified
+              ? const _OtpSuccessView(key: ValueKey('otp-success'))
+              : Form(
+                  key: _customerOtpFormKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            color: context.scheme.primaryContainer,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.sms_outlined,
+                              color: context.scheme.primary, size: 30),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Center(
+                        child: Text(
+                          'Code sent to ${_maskPhone(challenge.phone)}',
+                          style: TextStyle(
+                              fontSize: compact ? 15 : 17,
+                              fontWeight: FontWeight.w700,
+                              color: context.scheme.onSurfaceVariant),
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+                      OtpTextField(
+                        key: _otpBoxesKey,
+                        controller: _customerOtp,
+                        helperText: challenge.devOtp == null
+                            ? 'Enter the six-digit code.'
+                            : 'Dev OTP: ${challenge.devOtp}',
+                        onChanged: (value) {
+                          _otpCode = value;
+                          setState(() {});
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextButton.icon(
+                              onPressed:
+                                  _submitting ? null : _changeCustomerPhone,
+                              icon: const Icon(Icons.edit_outlined),
+                              label: const Text('Change number'),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: _submitting ||
+                                    _customerOtpSecondsRemaining > 0
+                                ? null
+                                : _resendCustomerOtp,
+                            child: Text(resendLabel),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      BrandPrimaryButton(
+                        onPressed: _submitting || _otpCode.length != 6
+                            ? null
+                            : _submit,
+                        icon: Icons.verified_user_outlined,
+                        label: 'Verify and continue',
+                        busy: _submitting,
+                        busyLabel: 'Verifying...',
+                      ),
+                    ],
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+
+  String _e164CustomerPhone(String raw) =>
+      '${_customerCountry.code}${raw.replaceAll(RegExp(r'\D'), '')}';
+
+  bool get _customerPhoneValid =>
+      _phone.text.trim().replaceAll(RegExp(r'\D'), '').length ==
+      _customerCountry.nationalDigits;
+
+  String? _validateCustomerPhone(String? value) {
+    final digits = (value ?? '').trim().replaceAll(RegExp(r'\D'), '');
+    if (digits.length != _customerCountry.nationalDigits) {
+      return _customerCountry.code == '+91'
+          ? 'Enter a valid 10-digit mobile number'
+          : 'Enter a ${_customerCountry.nationalDigits}-digit mobile number';
+    }
+    return null;
   }
 
   Widget _buildPartnerAuth() {
@@ -453,19 +728,12 @@ class _AuthScreenState extends State<AuthScreen> {
                     label: const Text('Change phone number')),
               ],
               const SizedBox(height: 24),
-              FilledButton(
+              BrandPrimaryButton(
                 onPressed: _submitting ? null : _submit,
-                child: _submitting
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: BrandColors.evergreen))
-                    : Text(challenge == null
-                        ? _isRegistering
-                            ? 'Continue'
-                            : 'Send OTP'
-                        : 'Verify and continue'),
+                label: challenge == null
+                    ? (_isRegistering ? 'Continue' : 'Send OTP')
+                    : 'Verify and continue',
+                busy: _submitting,
               ),
               if (challenge == null) ...[
                 const SizedBox(height: 12),
@@ -499,11 +767,13 @@ class CustomerJourneyScreen extends StatefulWidget {
       {super.key,
       required this.api,
       required this.session,
-      required this.onLogout});
+      required this.onLogout,
+      this.onEditProfile});
 
   final ApiClient api;
   final Session session;
   final VoidCallback onLogout;
+  final VoidCallback? onEditProfile;
 
   @override
   State<CustomerJourneyScreen> createState() => _CustomerJourneyScreenState();
@@ -511,18 +781,36 @@ class CustomerJourneyScreen extends StatefulWidget {
 
 class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
   final _label = TextEditingController(text: 'Home');
-  final _address = TextEditingController();
+  final _houseNumber = TextEditingController();
+  final _building = TextEditingController();
+  final _street = TextEditingController();
+  final _area = TextEditingController();
+  final _landmark = TextEditingController();
+  final _city = TextEditingController();
+  final _state = TextEditingController(text: 'Maharashtra');
   final _pin = TextEditingController();
   List<Map<String, dynamic>> _services = [];
   List<Map<String, dynamic>> _addresses = [];
+  final Set<String> _selectedServices = {};
   Map<String, dynamic>? _selectedAddress;
   Map<String, dynamic>? _availability;
-  String? _service;
-  int _duration = 60;
+  final _specialInstructions = TextEditingController();
   DateTime _scheduled = DateTime.now().add(const Duration(hours: 1));
   bool _loading = true;
   bool _savingAddress = false;
   bool _booking = false;
+  bool _reviewing = false;
+  Map<String, dynamic>? _confirmedBooking;
+  int? _editingAddressId;
+
+  static const List<TimeOfDay> _timeSlots = [
+    TimeOfDay(hour: 8, minute: 0),
+    TimeOfDay(hour: 10, minute: 0),
+    TimeOfDay(hour: 12, minute: 0),
+    TimeOfDay(hour: 14, minute: 0),
+    TimeOfDay(hour: 16, minute: 0),
+    TimeOfDay(hour: 18, minute: 0),
+  ];
 
   @override
   void initState() {
@@ -533,8 +821,15 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
   @override
   void dispose() {
     _label.dispose();
-    _address.dispose();
+    _houseNumber.dispose();
+    _building.dispose();
+    _street.dispose();
+    _area.dispose();
+    _landmark.dispose();
+    _city.dispose();
+    _state.dispose();
     _pin.dispose();
+    _specialInstructions.dispose();
     super.dispose();
   }
 
@@ -550,13 +845,18 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
       setState(() {
         _services = services;
         _addresses = addresses;
-        _selectedAddress = addresses.isEmpty ? null : addresses.first;
-        _service = services.isEmpty ? null : services.first['name']?.toString();
+        _selectedAddress = _defaultAddress(addresses);
+        if (services.isNotEmpty) {
+          _selectedServices.add(services.first['name']?.toString() ?? '');
+          _selectedServices.remove('');
+        }
         if (_selectedAddress != null) {
           _pin.text = _selectedAddress!['pinCode']?.toString() ?? '';
         }
+        _scheduled = _nextAvailableSlot();
       });
       if (_pin.text.length == 6) await _checkAvailability();
+      await _recomputeDuration();
     } on ApiException catch (error) {
       _showMessage(error.message);
     } catch (_) {
@@ -567,37 +867,216 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
     }
   }
 
-  Future<void> _saveAddress() async {
-    if (_label.text.trim().isEmpty ||
-        _address.text.trim().isEmpty ||
-        !_validPin) {
-      _showMessage('Enter a label, full address and a six-digit PIN code.');
+  Map<String, dynamic>? _defaultAddress(List<Map<String, dynamic>> addresses) {
+    if (addresses.isEmpty) return null;
+    for (final address in addresses) {
+      if (address['defaultAddress'] == true) return address;
+    }
+    return addresses.first;
+  }
+
+  List<String> get _selectedServiceNames => _selectedServices.toList()..sort();
+
+  int _duration = 0;
+
+  Future<void> _recomputeDuration() async {
+    final selected = _selectedServiceNames;
+    if (selected.isEmpty) {
+      if (mounted) setState(() => _duration = 0);
+      return;
+    }
+    try {
+      final result = Map<String, dynamic>.from(
+        await widget.api.post('/booking/calculate-duration',
+            {'services': selected}),
+      );
+      if (mounted) {
+        setState(() => _duration = (result['durationMinutes'] as num).toInt());
+      }
+    } on ApiException {
+      if (mounted) setState(() => _duration = selected.length * 60);
+    }
+  }
+
+  DateTime _slotDateTime(DateTime date, TimeOfDay slot) =>
+      DateTime(date.year, date.month, date.day, slot.hour, slot.minute);
+
+  bool _slotAvailable(TimeOfDay slot) =>
+      _slotDateTime(_scheduled, slot).isAfter(DateTime.now()) &&
+      _availability?['status'] != 'NOT_AVAILABLE';
+
+  DateTime _nextAvailableSlot() {
+    final now = DateTime.now();
+    for (final slot in _timeSlots) {
+      final candidate = _slotDateTime(now, slot);
+      if (candidate.isAfter(now.add(const Duration(minutes: 30)))) {
+        return candidate;
+      }
+    }
+    final tomorrow = now.add(const Duration(days: 1));
+    final slot = _timeSlots.first;
+    return _slotDateTime(tomorrow, slot);
+  }
+
+  void _toggleService(String name) {
+    if (name.trim().isEmpty) return;
+    setState(() {
+      if (_selectedServices.contains(name)) {
+        if (_selectedServices.length == 1) {
+          _showMessage('Choose at least one service.');
+          return;
+        }
+        _selectedServices.remove(name);
+      } else {
+        _selectedServices.add(name);
+      }
+    });
+    _recomputeDuration();
+  }
+
+  Map<String, dynamic> _addressPayload({required bool defaultAddress}) => {
+        'label': _label.text.trim(),
+        'houseNumber': _houseNumber.text.trim(),
+        'building': _building.text.trim(),
+        'street': _street.text.trim(),
+        'area': _area.text.trim(),
+        'landmark': _landmark.text.trim(),
+        'city': _city.text.trim(),
+        'state': _state.text.trim(),
+        'pinCode': _pin.text.trim(),
+        'defaultAddress': defaultAddress,
+      };
+
+  bool get _addressFormValid =>
+      _label.text.trim().isNotEmpty &&
+      _houseNumber.text.trim().isNotEmpty &&
+      _street.text.trim().isNotEmpty &&
+      _area.text.trim().isNotEmpty &&
+      _city.text.trim().isNotEmpty &&
+      _state.text.trim().isNotEmpty &&
+      _validPin;
+
+  Future<void> _saveAddress({bool makeDefault = false}) async {
+    if (!_addressFormValid) {
+      _showMessage(
+          'Enter nickname, house number, street, area, city, state and PIN code.');
       return;
     }
     setState(() => _savingAddress = true);
     try {
-      final saved = Map<String, dynamic>.from(await widget.api.post(
-        '/customer/addresses',
-        {
-          'label': _label.text.trim(),
-          'address': _address.text.trim(),
-          'pinCode': _pin.text.trim()
-        },
-        token: widget.session.token,
-      ) as Map);
+      final payload = _addressPayload(
+          defaultAddress: makeDefault || _addresses.isEmpty || _editingAddressId == null);
+      final saved = Map<String, dynamic>.from(await ( _editingAddressId == null
+          ? widget.api.post('/customer/addresses', payload,
+              token: widget.session.token)
+          : widget.api.put('/customer/addresses/$_editingAddressId', payload,
+              token: widget.session.token)) as Map);
       if (!mounted) return;
       setState(() {
-        _addresses = [saved, ..._addresses];
+        if (_editingAddressId == null) {
+          _addresses = [saved, ..._addresses.where((item) => item['id'] != saved['id'])];
+        } else {
+          _addresses = _addresses
+              .map((item) => item['id'] == saved['id'] ? saved : item)
+              .toList();
+        }
         _selectedAddress = saved;
+        _editingAddressId = null;
         _availability = null;
       });
       await _checkAvailability();
-      _showMessage('Address saved. Now choose a service and schedule.');
+      _showMessage('Address saved.');
     } on ApiException catch (error) {
       _showMessage(error.message);
     } finally {
       if (mounted) setState(() => _savingAddress = false);
     }
+  }
+
+  Future<void> _setDefaultAddress(Map<String, dynamic> address) async {
+    try {
+      final saved = Map<String, dynamic>.from(await widget.api.put(
+            '/customer/addresses/${address['id']}/default',
+            {},
+            token: widget.session.token,
+          ) as Map);
+      if (!mounted) return;
+      setState(() {
+        _addresses = _addresses
+            .map((item) => {
+                  ...item,
+                  'defaultAddress': item['id'] == saved['id'],
+                })
+            .toList();
+        _selectedAddress = saved;
+        _pin.text = saved['pinCode']?.toString() ?? '';
+      });
+      await _checkAvailability();
+    } on ApiException catch (error) {
+      _showMessage(error.message);
+    }
+  }
+
+  Future<void> _deleteAddress(Map<String, dynamic> address) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove address?'),
+        content: Text('Delete ${address['label']} from your saved addresses?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await widget.api.delete('/customer/addresses/${address['id']}',
+          token: widget.session.token);
+      if (!mounted) return;
+      setState(() {
+        _addresses = _addresses.where((item) => item['id'] != address['id']).toList();
+        if (_selectedAddress?['id'] == address['id']) {
+          _selectedAddress = _defaultAddress(_addresses);
+        }
+      });
+      _showMessage('Address removed.');
+    } on ApiException catch (error) {
+      _showMessage(error.message);
+    }
+  }
+
+  void _startEditingAddress(Map<String, dynamic> address) {
+    setState(() {
+      _editingAddressId = (address['id'] as num?)?.toInt();
+      _label.text = address['label']?.toString() ?? '';
+      _houseNumber.text = address['houseNumber']?.toString() ?? '';
+      _building.text = address['building']?.toString() ?? '';
+      _street.text = address['street']?.toString() ?? '';
+      _area.text = address['area']?.toString() ?? '';
+      _landmark.text = address['landmark']?.toString() ?? '';
+      _city.text = address['city']?.toString() ?? '';
+      _state.text = address['state']?.toString() ?? 'Maharashtra';
+      _pin.text = address['pinCode']?.toString() ?? '';
+      _selectedAddress = address;
+      _availability = null;
+    });
+  }
+
+  void _resetAddressForm() {
+    setState(() {
+      _editingAddressId = null;
+      _label.text = 'Home';
+      _houseNumber.clear();
+      _building.clear();
+      _street.clear();
+      _area.clear();
+      _landmark.clear();
+      _city.clear();
+      _state.text = 'Maharashtra';
+      _pin.clear();
+      _availability = null;
+    });
   }
 
   bool get _validPin => RegExp(r'^\d{6}$').hasMatch(_pin.text.trim());
@@ -626,61 +1105,216 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
       lastDate: DateTime.now().add(const Duration(days: 30)),
     );
     if (date == null || !mounted) return;
-    final time = await showTimePicker(
-        context: context, initialTime: TimeOfDay.fromDateTime(_scheduled));
-    if (time == null || !mounted) return;
-    setState(() => _scheduled =
-        DateTime(date.year, date.month, date.day, time.hour, time.minute));
+    final currentSlot = TimeOfDay.fromDateTime(_scheduled);
+    final slot = _timeSlots.contains(currentSlot)
+        ? currentSlot
+        : _timeSlots.first;
+    setState(() {
+      _scheduled = _slotDateTime(date, slot);
+      if (!_scheduled.isAfter(DateTime.now())) {
+        _scheduled = _nextAvailableSlot();
+      }
+    });
   }
 
-  Future<void> _book() async {
+  void _selectSlot(TimeOfDay slot) {
+    if (!_slotAvailable(slot)) return;
+    setState(() => _scheduled = _slotDateTime(_scheduled, slot));
+  }
+
+  bool _validateBookingDraft() {
     final address = _selectedAddress;
     if (address == null) {
       _showMessage('Save or choose a service address first.');
-      return;
+      return false;
     }
-    if (_service == null) {
-      _showMessage('No services are configured yet.');
-      return;
+    if (_selectedServices.isEmpty) {
+      _showMessage('Choose at least one cleaning service.');
+      return false;
     }
     if (_availability?['status'] == 'NOT_AVAILABLE') {
       _showMessage('MaidItQuick is not available at this PIN code yet.');
-      return;
+      return false;
     }
+    if (!_scheduled.isAfter(DateTime.now())) {
+      _showMessage('Choose an upcoming time slot.');
+      return false;
+    }
+    return true;
+  }
+
+  void _reviewBooking() {
+    if (!_validateBookingDraft()) return;
+    setState(() => _reviewing = true);
+  }
+
+  void _editBooking() => setState(() => _reviewing = false);
+
+  Future<void> _book() async {
+    final address = _selectedAddress;
+    if (!_validateBookingDraft() || address == null) return;
     setState(() => _booking = true);
     try {
+      final selected = _selectedServiceNames;
       final booking = Map<String, dynamic>.from(await widget.api.post(
         '/bookings',
         {
-          'service': _service,
+          'service': selected.join(', '),
+          'services': selected,
           'address': address['address']?.toString(),
           'pinCode': address['pinCode']?.toString(),
           'scheduledFor': _scheduled.toIso8601String(),
           'durationMinutes': _duration,
           'optionLabel': 'Standard service',
           'promoCode': '',
+          'specialInstructions': _specialInstructions.text.trim(),
         },
         token: widget.session.token,
       ) as Map);
       if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Booking requested'),
-          content: Text(
-              'Your ${booking['service']} booking has been created. Reference: MIQ-${booking['id']}'),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Done'))
-          ],
-        ),
-      );
+      setState(() {
+        _confirmedBooking = booking;
+        _reviewing = false;
+      });
     } on ApiException catch (error) {
       _showMessage(error.message);
     } finally {
       if (mounted) setState(() => _booking = false);
     }
+  }
+
+  Widget _buildReview() {
+    final address = _selectedAddress;
+    final notes = _specialInstructions.text.trim();
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        const _StepTitle(number: '3', title: 'Review booking'),
+        const SizedBox(height: 10),
+        const Text(
+          'Confirm the details before the request is sent to MaidItQuick operations.',
+          style: TextStyle(color: BrandColors.muted),
+        ),
+        const SizedBox(height: 18),
+        _ReviewCard(
+          title: 'Services',
+          icon: Icons.cleaning_services_outlined,
+          value: _selectedServiceNames.join('\n'),
+          onEdit: _editBooking,
+        ),
+        _ReviewCard(
+          title: 'Address',
+          icon: Icons.location_on_outlined,
+          value: address == null
+              ? ''
+              : '${address['label'] ?? 'Address'}\n${address['address']}\n${address['pinCode']}',
+          onEdit: _editBooking,
+        ),
+        _ReviewCard(
+          title: 'Schedule',
+          icon: Icons.event_available_outlined,
+          value: _displayDate(_scheduled),
+          onEdit: _editBooking,
+        ),
+        _ReviewCard(
+          title: 'Estimated duration',
+          icon: Icons.timer_outlined,
+          value: '$_duration minutes',
+        ),
+        _ReviewCard(
+          title: 'Notes',
+          icon: Icons.notes_outlined,
+          value: notes.isEmpty ? 'No special instructions' : notes,
+          onEdit: _editBooking,
+        ),
+        const SizedBox(height: 14),
+        FilledButton.icon(
+          onPressed: _booking ? null : _book,
+          icon: const Icon(Icons.check_circle_outline),
+          label: Text(_booking ? 'Confirming...' : 'Confirm booking'),
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: _booking ? null : _editBooking,
+          icon: const Icon(Icons.edit_outlined),
+          label: const Text('Edit details'),
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'No payment is collected in this MVP. A booking ID is generated after confirmation.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 12, color: BrandColors.muted),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSuccess(Map<String, dynamic> booking) {
+    final reference = 'MIQ-${booking['id']}';
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        const Icon(Icons.check_circle_outline,
+            color: BrandColors.lime, size: 56),
+        const SizedBox(height: 18),
+        const Text('Booking confirmed',
+            style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        Text(
+          'Your request has been sent. MaidItQuick operations will assign a partner automatically.',
+          style: const TextStyle(color: BrandColors.muted, height: 1.35),
+        ),
+        const SizedBox(height: 22),
+        _ReviewCard(
+          title: 'Booking ID',
+          icon: Icons.confirmation_number_outlined,
+          value: reference,
+        ),
+        _ReviewCard(
+          title: 'Status',
+          icon: Icons.track_changes_outlined,
+          value: _bookingStatusLabel(booking['status']?.toString() ?? ''),
+        ),
+        _ReviewCard(
+          title: 'Address',
+          icon: Icons.location_on_outlined,
+          value: booking['address']?.toString() ?? '',
+        ),
+        _ReviewCard(
+          title: 'Date and time',
+          icon: Icons.event_available_outlined,
+          value: _displayBookingDate(booking['scheduledFor']?.toString()),
+        ),
+        _ReviewCard(
+          title: 'Duration',
+          icon: Icons.timer_outlined,
+          value: '${booking['durationMinutes'] ?? _duration} minutes',
+        ),
+        const SizedBox(height: 14),
+        FilledButton.icon(
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            }
+          },
+          icon: const Icon(Icons.home_outlined),
+          label: const Text('Back to dashboard'),
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: () {
+            setState(() {
+              _confirmedBooking = null;
+              _reviewing = false;
+              _specialInstructions.clear();
+              _scheduled = _nextAvailableSlot();
+            });
+          },
+          icon: const Icon(Icons.add_task_outlined),
+          label: const Text('Book another service'),
+        ),
+      ],
+    );
   }
 
   void _showMessage(String message) {
@@ -696,6 +1330,11 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
       appBar: AppBar(
         title: const Text('MaidItQuick'),
         actions: [
+          if (widget.onEditProfile != null)
+            IconButton(
+                onPressed: widget.onEditProfile,
+                icon: const Icon(Icons.person_outline),
+                tooltip: 'Edit profile'),
           IconButton(
               onPressed: widget.onLogout,
               icon: const Icon(Icons.logout),
@@ -705,7 +1344,11 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : SafeArea(
-              child: ListView(
+              child: _confirmedBooking != null
+                  ? _buildSuccess(_confirmedBooking!)
+                  : _reviewing
+                  ? _buildReview()
+                  : ListView(
                 padding: const EdgeInsets.all(20),
                 children: [
                   Text('Hello, ${widget.session.name}',
@@ -730,16 +1373,53 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
                       },
                       child: Column(
                         children: _addresses
-                            .map((address) =>
-                                RadioListTile<Map<String, dynamic>>(
-                                  value: address,
-                                  activeColor: BrandColors.lime,
-                                  title: Text(address['label']?.toString() ??
-                                      'Address'),
-                                  subtitle: Text(
-                                      '${address['address']}\n${address['pinCode']}',
-                                      style: const TextStyle(
-                                          color: BrandColors.muted)),
+                            .map((address) => Card(
+                                  child: Column(
+                                    children: [
+                                      RadioListTile<Map<String, dynamic>>(
+                                        value: address,
+                                        activeColor: BrandColors.lime,
+                                        title: Row(
+                                          children: [
+                                            Expanded(
+                                                child: Text(
+                                                    address['label']?.toString() ??
+                                                        'Address')),
+                                            if (address['defaultAddress'] == true)
+                                              const Chip(
+                                                  label: Text('Default'),
+                                                  visualDensity:
+                                                      VisualDensity.compact),
+                                          ],
+                                        ),
+                                        subtitle: Text(
+                                            '${address['address']}\n${address['pinCode']}',
+                                            style: const TextStyle(
+                                                color: BrandColors.muted)),
+                                      ),
+                                      OverflowBar(
+                                        alignment: MainAxisAlignment.end,
+                                        spacing: 4,
+                                        children: [
+                                          TextButton(
+                                              onPressed: () =>
+                                                  _startEditingAddress(address),
+                                              child: const Text('Edit')),
+                                          TextButton(
+                                              onPressed: address['defaultAddress'] ==
+                                                      true
+                                                  ? null
+                                                  : () => _setDefaultAddress(
+                                                      address),
+                                              child: const Text('Set default')),
+                                          TextButton(
+                                              onPressed: () =>
+                                                  _deleteAddress(address),
+                                              child: const Text('Delete')),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ))
                             .toList(),
                       ),
@@ -749,14 +1429,38 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
                   TextField(
                       controller: _label,
                       decoration: const InputDecoration(
-                          labelText: 'Address label',
+                          labelText: 'Address nickname',
                           hintText: 'Home, Work, etc.')),
                   const SizedBox(height: 10),
                   TextField(
-                      controller: _address,
-                      maxLines: 2,
+                      controller: _houseNumber,
+                      decoration: const InputDecoration(labelText: 'House number')),
+                  const SizedBox(height: 10),
+                  TextField(
+                      controller: _building,
                       decoration:
-                          const InputDecoration(labelText: 'Full address')),
+                          const InputDecoration(labelText: 'Building (optional)')),
+                  const SizedBox(height: 10),
+                  TextField(
+                      controller: _street,
+                      decoration: const InputDecoration(labelText: 'Street')),
+                  const SizedBox(height: 10),
+                  TextField(
+                      controller: _area,
+                      decoration: const InputDecoration(labelText: 'Area')),
+                  const SizedBox(height: 10),
+                  TextField(
+                      controller: _landmark,
+                      decoration:
+                          const InputDecoration(labelText: 'Landmark (optional)')),
+                  const SizedBox(height: 10),
+                  TextField(
+                      controller: _city,
+                      decoration: const InputDecoration(labelText: 'City')),
+                  const SizedBox(height: 10),
+                  TextField(
+                      controller: _state,
+                      decoration: const InputDecoration(labelText: 'State')),
                   const SizedBox(height: 10),
                   TextField(
                     controller: _pin,
@@ -770,13 +1474,21 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
                   Row(children: [
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: _savingAddress ? null : _saveAddress,
+                        onPressed: _savingAddress ? null : () => _saveAddress(),
                         icon: const Icon(Icons.add_location_alt_outlined),
-                        label: Text(
-                            _savingAddress ? 'Saving...' : 'Save this address'),
+                        label: Text(_savingAddress
+                            ? 'Saving...'
+                            : _editingAddressId == null
+                                ? 'Save this address'
+                                : 'Update address'),
                       ),
                     ),
                     const SizedBox(width: 10),
+                    if (_editingAddressId != null)
+                      IconButton(
+                          onPressed: _resetAddressForm,
+                          icon: const Icon(Icons.close),
+                          tooltip: 'Cancel edit'),
                     IconButton(
                         onPressed: _checkAvailability,
                         icon: const Icon(Icons.bolt_outlined),
@@ -790,40 +1502,80 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
                   const _StepTitle(
                       number: '2', title: 'Choose service and time'),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: _service,
-                    decoration: const InputDecoration(labelText: 'Service'),
-                    items: _services
-                        .map((service) => DropdownMenuItem(
-                            value: service['name']?.toString(),
-                            child: Text(
-                                '${service['name']} — ₹${((service['pricePaise'] ?? 0) as num) ~/ 100}')))
-                        .toList(),
-                    onChanged: (value) => setState(() => _service = value),
-                  ),
+                  if (_services.isEmpty)
+                    const Text('No services are configured yet.',
+                        style: TextStyle(color: BrandColors.muted))
+                  else
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: _services.map((service) {
+                        final name = service['name']?.toString() ?? '';
+                        final selected = _selectedServices.contains(name);
+                        final price =
+                            ((service['pricePaise'] ?? 0) as num) ~/ 100;
+                        return FilterChip(
+                          selected: selected,
+                          showCheckmark: true,
+                          avatar: const Icon(Icons.cleaning_services_outlined,
+                              size: 18),
+                          label: Text('$name · ₹$price'),
+                          onSelected: (_) => _toggleService(name),
+                        );
+                      }).toList(),
+                    ),
                   const SizedBox(height: 14),
-                  DropdownButtonFormField<int>(
-                    initialValue: _duration,
-                    decoration: const InputDecoration(labelText: 'Duration'),
-                    items: const [30, 60, 90, 120]
-                        .map((minutes) => DropdownMenuItem(
-                            value: minutes, child: Text('$minutes minutes')))
-                        .toList(),
-                    onChanged: (value) =>
-                        setState(() => _duration = value ?? 60),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.timer_outlined,
+                          color: BrandColors.lime),
+                      title: const Text('Estimated duration'),
+                      subtitle: Text(_selectedServices.isEmpty
+                          ? 'Select services to calculate duration'
+                          : '$_duration minutes based on ${_selectedServices.length} selected service${_selectedServices.length == 1 ? '' : 's'}'),
+                    ),
                   ),
                   const SizedBox(height: 14),
                   OutlinedButton.icon(
                     onPressed: _pickSchedule,
-                    icon: const Icon(Icons.schedule_outlined),
-                    label: Text('Schedule: ${_displayDate(_scheduled)}'),
+                    icon: const Icon(Icons.calendar_month_outlined),
+                    label: Text(
+                        'Date: ${_scheduled.day}/${_scheduled.month}/${_scheduled.year}'),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: _timeSlots.map((slot) {
+                      final selected = TimeOfDay.fromDateTime(_scheduled) == slot;
+                      final available = _slotAvailable(slot);
+                      return ChoiceChip(
+                        selected: selected,
+                        label: Text(_slotLabel(slot)),
+                        onSelected:
+                            available ? (_) => _selectSlot(slot) : null,
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: _specialInstructions,
+                    minLines: 2,
+                    maxLines: 4,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(
+                      labelText: 'Special instructions (optional)',
+                      hintText:
+                          'Ring bell twice, bring ladder, pet inside, call before arrival',
+                      prefixIcon: Icon(Icons.notes_outlined),
+                    ),
                   ),
                   const SizedBox(height: 24),
                   FilledButton.icon(
-                    onPressed: _booking ? null : _book,
-                    icon: const Icon(Icons.arrow_forward),
+                    onPressed: _booking ? null : _reviewBooking,
+                    icon: const Icon(Icons.fact_check_outlined),
                     label: Text(
-                        _booking ? 'Requesting...' : 'Request this service'),
+                        _booking ? 'Requesting...' : 'Review booking'),
                   ),
                   const SizedBox(height: 10),
                   const Text(
@@ -1551,6 +2303,55 @@ class _PartnerFormCard extends StatelessWidget {
   }
 }
 
+class _ReviewCard extends StatelessWidget {
+  const _ReviewCard({
+    required this.title,
+    required this.icon,
+    required this.value,
+    this.onEdit,
+  });
+
+  final String title;
+  final IconData icon;
+  final String value;
+  final VoidCallback? onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: BrandColors.lime),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 6),
+                  Text(value,
+                      style: const TextStyle(
+                          color: BrandColors.muted, height: 1.35)),
+                ],
+              ),
+            ),
+            if (onEdit != null)
+              IconButton(
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_outlined),
+                tooltip: 'Edit $title',
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _PartnerConsentScreen extends StatelessWidget {
   const _PartnerConsentScreen({
     required this.partnerName,
@@ -1792,6 +2593,253 @@ class _TrustItem extends StatelessWidget {
       ]);
 }
 
+class _CountryCode {
+  const _CountryCode(this.code, this.name, this.nationalDigits);
+
+  final String code;
+  final String name;
+  final int nationalDigits;
+}
+
+const List<_CountryCode> _customerCountries = [
+  _CountryCode('+91', 'India', 10),
+  _CountryCode('+971', 'United Arab Emirates', 9),
+  _CountryCode('+1', 'United States', 10),
+  _CountryCode('+44', 'United Kingdom', 9),
+  _CountryCode('+61', 'Australia', 9),
+];
+
+class _AuthBrandHeader extends StatelessWidget {
+  const _AuthBrandHeader({
+    required this.compact,
+    required this.title,
+    required this.subtitle,
+    required this.step,
+  });
+
+  final bool compact;
+  final String title;
+  final String subtitle;
+  final int step;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Center(
+          child: Image.asset(
+            'assets/branding/maiditquick-wordmark.jpeg',
+            height: compact ? 62 : 88,
+            fit: BoxFit.contain,
+          ),
+        ),
+        SizedBox(height: compact ? 16 : 26),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: compact ? 26 : 32,
+            fontWeight: FontWeight.w800,
+            height: 1.12,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          subtitle,
+          style: TextStyle(
+            color: context.brandMuted,
+            height: 1.4,
+            fontSize: compact ? 13 : 15,
+          ),
+        ),
+        const SizedBox(height: 18),
+        Row(
+          children: [
+            _AuthStepPill(index: 1, label: 'Mobile number', active: step >= 1),
+            const SizedBox(width: 10),
+            _AuthStepPill(index: 2, label: 'Verify OTP', active: step >= 2),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _AuthStepPill extends StatelessWidget {
+  const _AuthStepPill({
+    required this.index,
+    required this.label,
+    required this.active,
+  });
+
+  final int index;
+  final String label;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    final foreground = active ? scheme.onPrimary : scheme.onSurfaceVariant;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: active ? scheme.primary : Colors.transparent,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: active ? scheme.primary : scheme.outlineVariant,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircleAvatar(
+            radius: 9,
+            backgroundColor: active ? scheme.onPrimary : Colors.transparent,
+            child: Text(
+              '$index',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                color: foreground,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: foreground,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AuthDivider extends StatelessWidget {
+  const _AuthDivider({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    return Row(
+      children: [
+        Expanded(child: Divider(color: scheme.outlineVariant)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: scheme.onSurfaceVariant,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        Expanded(child: Divider(color: scheme.outlineVariant)),
+      ],
+    );
+  }
+}
+
+class _AuthTermsRow extends StatelessWidget {
+  const _AuthTermsRow({required this.onShowMessage});
+
+  final ValueChanged<String> onShowMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = context.brandMuted;
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text('By continuing, you agree to ',
+            style: TextStyle(color: muted, fontSize: 12)),
+        TextButton(
+          onPressed: () => onShowMessage('Terms will open in production.'),
+          child: const Text('Terms'),
+        ),
+        Text(' and ', style: TextStyle(color: muted, fontSize: 12)),
+        TextButton(
+          onPressed: () =>
+              onShowMessage('Privacy policy will open in production.'),
+          child: const Text('Privacy'),
+        ),
+      ],
+    );
+  }
+}
+
+class _OtpSuccessView extends StatelessWidget {
+  const _OtpSuccessView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: scheme.primaryContainer,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.check_circle, color: scheme.primary, size: 44),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'Verified!',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: scheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Signing you in...',
+            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NationalNumberInputFormatter extends TextInputFormatter {
+  const _NationalNumberInputFormatter(this.maxLength);
+
+  final int maxLength;
+
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    final buffer = StringBuffer();
+    for (final rune in newValue.text.runes) {
+      final digit = _digitForRune(rune);
+      if (digit == null) continue;
+      if (buffer.length >= maxLength) break;
+      buffer.write(digit);
+    }
+    final text = buffer.toString();
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+}
+
 class _PhoneInputFormatter extends TextInputFormatter {
   const _PhoneInputFormatter();
 
@@ -1853,4 +2901,28 @@ String _displayDate(DateTime dateTime) {
       dateTime.hour == 0 || dateTime.hour == 12 ? 12 : dateTime.hour % 12;
   final period = dateTime.hour >= 12 ? 'PM' : 'AM';
   return '${dateTime.day}/${dateTime.month}/${dateTime.year}, $hour:${dateTime.minute.toString().padLeft(2, '0')} $period';
+}
+
+String _slotLabel(TimeOfDay slot) {
+  final hour = slot.hour == 0 || slot.hour == 12 ? 12 : slot.hour % 12;
+  final period = slot.hour >= 12 ? 'PM' : 'AM';
+  return '$hour:${slot.minute.toString().padLeft(2, '0')} $period';
+}
+
+String _displayBookingDate(String? raw) {
+  if (raw == null || raw.trim().isEmpty) return '';
+  final parsed = DateTime.tryParse(raw);
+  if (parsed == null) return raw;
+  return _displayDate(parsed);
+}
+
+String _bookingStatusLabel(String status) {
+  return switch (status) {
+    'REQUESTED' => 'Confirmed',
+    'ASSIGNED' => 'Partner assigned',
+    'ON_THE_WAY' => 'On the way',
+    'IN_PROGRESS' => 'Started',
+    'COMPLETED' => 'Completed',
+    _ => status.replaceAll('_', ' '),
+  };
 }
