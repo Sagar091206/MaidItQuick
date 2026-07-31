@@ -5,6 +5,7 @@ import '../../../core/api_client.dart';
 import '../../../core/brand_theme.dart';
 import '../../../core/document_picker.dart';
 import '../../auth/data/auth_repository.dart';
+import '../../dashboard/presentation/partner_dashboard_screen.dart';
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key, required this.onChooseRole});
@@ -860,24 +861,22 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
   final _city = TextEditingController();
   final _state = TextEditingController();
   final _pinCode = TextEditingController();
-  final _services = TextEditingController();
-  final _workLocations = TextEditingController();
-  final _experience = TextEditingController();
-  final _availableWhen = TextEditingController();
   final _accountHolderName = TextEditingController();
-  final _last4 = TextEditingController();
+  final _accountNumber = TextEditingController();
   final _ifsc = TextEditingController();
   final _upiId = TextEditingController();
   Map<String, dynamic>? _profile;
+  Map<String, dynamic>? _applicationStatusData;
+  bool _statusLoading = false;
+  String? _statusError;
   KycDocument? _identityDocument;
   KycDocument? _panDocument;
   KycDocument? _profilePhoto;
   KycDocument? _addressDocument;
-  KycDocument? _policeDocument;
   String _payoutMethod = 'BANK';
-  bool _partnerCodeAccepted = false;
   bool _loading = true;
   String? _busyAction;
+  int _selectedOnboardingTab = 0;
 
   @override
   void initState() {
@@ -894,12 +893,8 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
     _city.dispose();
     _state.dispose();
     _pinCode.dispose();
-    _services.dispose();
-    _workLocations.dispose();
-    _experience.dispose();
-    _availableWhen.dispose();
     _accountHolderName.dispose();
-    _last4.dispose();
+    _accountNumber.dispose();
     _ifsc.dispose();
     _upiId.dispose();
     super.dispose();
@@ -910,10 +905,43 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
       final data = Map<String, dynamic>.from(await widget.api
           .get('/workers/me', token: widget.session.token) as Map);
       if (mounted) setState(() => _profile = data);
+      await _loadApplicationStatus(showMessage: false);
     } on ApiException catch (error) {
       _showMessage(error.message);
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadApplicationStatus({bool showMessage = true}) async {
+    if (mounted) {
+      setState(() {
+        _statusLoading = true;
+        _statusError = null;
+      });
+    }
+
+    try {
+      final data = Map<String, dynamic>.from(
+        await widget.api.get(
+          '/api/partners/me/application/status',
+          token: widget.session.token,
+        ) as Map,
+      );
+
+      if (!mounted) return;
+      setState(() => _applicationStatusData = data);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _statusError = error.message);
+      if (showMessage) _showMessage(error.message);
+    } catch (_) {
+      if (!mounted) return;
+      const message = 'Application status is currently unavailable.';
+      setState(() => _statusError = message);
+      if (showMessage) _showMessage(message);
+    } finally {
+      if (mounted) setState(() => _statusLoading = false);
     }
   }
 
@@ -1035,58 +1063,20 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
     });
   }
 
-  Future<void> _submitPoliceVerification() async {
-    final document = _policeDocument;
-    if (document == null) {
-      _showMessage(
-          'Choose a police verification certificate or acknowledgement first.');
-      return;
-    }
-    await _uploadDocument(
-      action: 'police',
-      endpoint: '/workers/me/police-verification',
-      document: document,
-      success: 'Police verification submitted for review.',
-    );
-  }
-
-  Future<void> _saveServiceReadiness() async {
-    if (_services.text.trim().isEmpty ||
-        _workLocations.text.trim().isEmpty ||
-        _experience.text.trim().isEmpty ||
-        _availableWhen.text.trim().isEmpty ||
-        !_partnerCodeAccepted) {
-      _showMessage('Complete service details and accept the Partner code.');
-      return;
-    }
-    await _run('readiness', () async {
-      final profile = Map<String, dynamic>.from(await widget.api.post(
-        '/workers/me/service-readiness',
-        {
-          'serviceCategories': _services.text.trim(),
-          'workLocations': _workLocations.text.trim(),
-          'experienceSummary': _experience.text.trim(),
-          'availabilitySummary': _availableWhen.text.trim(),
-          'partnerCodeAccepted': _partnerCodeAccepted,
-        },
-        token: widget.session.token,
-      ) as Map);
-      if (mounted) {
-        setState(() => _profile = profile);
-        _showMessage('Service readiness saved.');
-      }
-    });
-  }
-
   Future<void> _savePayout() async {
     if (_accountHolderName.text.trim().isEmpty) {
       _showMessage('Enter the payout account holder name.');
       return;
     }
+    final accountNumber =
+        _accountNumber.text.replaceAll(RegExp(r'\s+'), '').trim();
+
     if (_payoutMethod == 'BANK' &&
-        (!RegExp(r'^\d{4}$').hasMatch(_last4.text) ||
+        (!RegExp(r'^\d{9,18}$').hasMatch(accountNumber) ||
             _ifsc.text.trim().isEmpty)) {
-      _showMessage('Enter the final four account digits and IFSC code.');
+      _showMessage(
+        'Enter a valid 9 to 18 digit account number and IFSC code.',
+      );
       return;
     }
     if (_payoutMethod == 'UPI' && _upiId.text.trim().isEmpty) {
@@ -1099,7 +1089,10 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
         {
           'method': _payoutMethod,
           'accountHolderName': _accountHolderName.text.trim(),
-          'accountLast4': _last4.text.trim(),
+          'accountNumber': accountNumber,
+          'accountLast4': accountNumber.length >= 4
+              ? accountNumber.substring(accountNumber.length - 4)
+              : accountNumber,
           'ifsc': _ifsc.text.trim().toUpperCase(),
           'upiId': _upiId.text.trim(),
         },
@@ -1164,6 +1157,23 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
     }
   }
 
+  void _openPartnerDashboard() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PartnerDashboardScreen(
+          api: widget.api,
+          session: widget.session,
+          onLogout: widget.onLogout,
+          initialProfile: _profile,
+          onManageVerification: (tabIndex) {
+            Navigator.of(context).pop();
+            setState(() => _selectedOnboardingTab = tabIndex);
+          },
+        ),
+      ),
+    );
+  }
+
   void _showMessage(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context)
@@ -1174,16 +1184,16 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
   @override
   Widget build(BuildContext context) {
     final profile = _profile;
-    final readyForJobs = profile?['readyForJobs'] == true;
     final consentAccepted = profile?['consentAccepted'] == true;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Partner onboarding'),
         actions: [
           IconButton(
-              onPressed: widget.onLogout,
-              icon: const Icon(Icons.logout),
-              tooltip: 'Sign out')
+            onPressed: widget.onLogout,
+            icon: const Icon(Icons.logout),
+            tooltip: 'Sign out',
+          ),
         ],
       ),
       body: _loading
@@ -1194,337 +1204,1048 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
                   saving: _isBusy('consent'),
                   onAccept: _acceptConsent,
                 )
-              : SafeArea(
-                  child: ListView(
-                    padding: const EdgeInsets.all(20),
-                    children: [
-                      Text('Welcome, ${widget.session.name}',
-                          style: const TextStyle(
-                              fontSize: 28, fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 6),
-                      const Text(
-                          'Finish each required item. Jobs become available after compliance and safety approval.',
-                          style: TextStyle(color: BrandColors.muted)),
-                      const SizedBox(height: 24),
-                      _PartnerStatusCard(
-                          title: 'Identity verification',
-                          status: _status('identityStatus'),
-                          icon: Icons.badge_outlined),
-                      const SizedBox(height: 12),
-                      _PartnerStatusCard(
-                          title: 'PAN verification',
-                          status: _status('panStatus'),
-                          icon: Icons.assignment_ind_outlined),
-                      const SizedBox(height: 12),
-                      _PartnerStatusCard(
-                          title: 'Selfie / profile photo',
-                          status: _status('selfieStatus'),
-                          icon: Icons.account_circle_outlined),
-                      const SizedBox(height: 12),
-                      _PartnerStatusCard(
-                          title: 'Address verification',
-                          status: _status('addressStatus'),
-                          icon: Icons.location_on_outlined),
-                      const SizedBox(height: 12),
-                      _PartnerStatusCard(
-                          title: 'Police verification',
-                          status: _status('backgroundCheckStatus'),
-                          icon: Icons.shield_outlined),
-                      const SizedBox(height: 28),
-                      _PartnerFormCard(
-                        number: '1',
-                        title: 'Upload identity document',
-                        children: [
-                          const Text(
-                              'Accepted: PAN, driving licence, voter ID, passport or masked Aadhaar as PDF, JPG or PNG.',
-                              style: TextStyle(color: BrandColors.muted)),
-                          const SizedBox(height: 12),
-                          OutlinedButton.icon(
-                              onPressed: () => _pickDocument(
-                                  (doc) => _identityDocument = doc),
-                              icon: const Icon(Icons.upload_file_outlined),
-                              label: Text(_identityDocument?.name ??
-                                  'Choose identity document')),
-                          const SizedBox(height: 10),
-                          FilledButton(
-                              onPressed:
-                                  _isBusy('identity') ? null : _submitIdentity,
-                              child: Text(
-                                  _buttonLabel('identity', 'Submit identity'))),
-                        ],
-                      ),
-                      _PartnerFormCard(
-                        number: '2',
-                        title: 'PAN verification',
-                        children: [
-                          TextField(
-                              controller: _panNumber,
-                              textCapitalization: TextCapitalization.characters,
-                              decoration: const InputDecoration(
-                                  labelText: 'PAN number')),
-                          const SizedBox(height: 12),
-                          TextField(
-                              controller: _panName,
-                              textCapitalization: TextCapitalization.words,
-                              decoration: const InputDecoration(
-                                  labelText: 'Name on PAN')),
-                          const SizedBox(height: 12),
-                          OutlinedButton.icon(
-                              onPressed: () =>
-                                  _pickDocument((doc) => _panDocument = doc),
-                              icon: const Icon(Icons.upload_file_outlined),
-                              label: Text(
-                                  _panDocument?.name ?? 'Choose PAN document')),
-                          const SizedBox(height: 10),
-                          FilledButton(
-                              onPressed: _isBusy('pan') ? null : _submitPan,
-                              child: Text(_buttonLabel('pan', 'Submit PAN'))),
-                        ],
-                      ),
-                      _PartnerFormCard(
-                        number: '3',
-                        title: 'Selfie / profile photo',
-                        children: [
-                          const Text(
-                              'Upload a current JPG or PNG photo for safety review and profile matching.',
-                              style: TextStyle(color: BrandColors.muted)),
-                          const SizedBox(height: 12),
-                          OutlinedButton.icon(
-                              onPressed: () =>
-                                  _pickDocument((doc) => _profilePhoto = doc),
-                              icon: const Icon(Icons.add_a_photo_outlined),
-                              label:
-                                  Text(_profilePhoto?.name ?? 'Choose photo')),
-                          const SizedBox(height: 10),
-                          FilledButton(
-                              onPressed:
-                                  _isBusy('photo') ? null : _submitProfilePhoto,
-                              child:
-                                  Text(_buttonLabel('photo', 'Submit photo'))),
-                        ],
-                      ),
-                      _PartnerFormCard(
-                        number: '4',
-                        title: 'Address verification',
-                        children: [
-                          const Text(
-                              'Add address details and upload address proof as PDF, JPG or PNG.',
-                              style: TextStyle(color: BrandColors.muted)),
-                          const SizedBox(height: 12),
-                          TextField(
-                              controller: _currentAddress,
-                              minLines: 2,
-                              maxLines: 3,
-                              decoration: const InputDecoration(
-                                  labelText: 'Current address')),
-                          const SizedBox(height: 12),
-                          TextField(
-                              controller: _permanentAddress,
-                              minLines: 2,
-                              maxLines: 3,
-                              decoration: const InputDecoration(
-                                  labelText: 'Permanent address')),
-                          const SizedBox(height: 12),
-                          TextField(
-                              controller: _city,
-                              textCapitalization: TextCapitalization.words,
-                              decoration:
-                                  const InputDecoration(labelText: 'City')),
-                          const SizedBox(height: 12),
-                          TextField(
-                              controller: _state,
-                              textCapitalization: TextCapitalization.words,
-                              decoration:
-                                  const InputDecoration(labelText: 'State')),
-                          const SizedBox(height: 12),
-                          TextField(
-                              controller: _pinCode,
-                              keyboardType: TextInputType.number,
-                              maxLength: 6,
-                              decoration: const InputDecoration(
-                                  labelText: 'PIN code', counterText: '')),
-                          const SizedBox(height: 12),
-                          OutlinedButton.icon(
-                              onPressed: () => _pickDocument(
-                                  (doc) => _addressDocument = doc),
-                              icon: const Icon(Icons.upload_file_outlined),
-                              label: Text(_addressDocument?.name ??
-                                  'Choose address proof')),
-                          const SizedBox(height: 10),
-                          FilledButton(
-                              onPressed:
-                                  _isBusy('address') ? null : _saveAddress,
-                              child: Text(_buttonLabel(
-                                  'address', 'Submit address and proof'))),
-                        ],
-                      ),
-                      _PartnerFormCard(
-                        number: '5',
-                        title: 'Police verification',
-                        children: [
-                          const Text(
-                              'Upload police verification certificate or acknowledgement where available for your city/state.',
-                              style: TextStyle(color: BrandColors.muted)),
-                          const SizedBox(height: 12),
-                          OutlinedButton.icon(
-                              onPressed: () =>
-                                  _pickDocument((doc) => _policeDocument = doc),
-                              icon: const Icon(Icons.upload_file_outlined),
-                              label: Text(_policeDocument?.name ??
-                                  'Choose police document')),
-                          const SizedBox(height: 10),
-                          FilledButton(
-                              onPressed: _isBusy('police')
-                                  ? null
-                                  : _submitPoliceVerification,
-                              child: Text(_buttonLabel(
-                                  'police', 'Submit police verification'))),
-                        ],
-                      ),
-                      _PartnerFormCard(
-                        number: '6',
-                        title: 'Service readiness',
-                        children: [
-                          TextField(
-                              controller: _services,
-                              minLines: 2,
-                              maxLines: 3,
-                              decoration: const InputDecoration(
-                                  labelText: 'Services offered')),
-                          const SizedBox(height: 12),
-                          TextField(
-                              controller: _workLocations,
-                              minLines: 2,
-                              maxLines: 3,
-                              decoration: const InputDecoration(
-                                  labelText: 'Preferred work locations')),
-                          const SizedBox(height: 12),
-                          TextField(
-                              controller: _experience,
-                              minLines: 2,
-                              maxLines: 3,
-                              decoration: const InputDecoration(
-                                  labelText: 'Experience')),
-                          const SizedBox(height: 12),
-                          TextField(
-                              controller: _availableWhen,
-                              minLines: 2,
-                              maxLines: 3,
-                              decoration: const InputDecoration(
-                                  labelText: 'Availability')),
-                          const SizedBox(height: 8),
-                          CheckboxListTile(
-                            contentPadding: EdgeInsets.zero,
-                            value: _partnerCodeAccepted,
-                            onChanged: (value) => setState(
-                                () => _partnerCodeAccepted = value ?? false),
-                            title: const Text(
-                                'I accept the Partner code of conduct and customer privacy rules.'),
-                          ),
-                          FilledButton(
-                              onPressed: _isBusy('readiness')
-                                  ? null
-                                  : _saveServiceReadiness,
-                              child: Text(
-                                  _buttonLabel('readiness', 'Save readiness'))),
-                        ],
-                      ),
-                      _PartnerFormCard(
-                        number: '7',
-                        title: 'Payout details',
-                        children: [
-                          SegmentedButton<String>(
-                            segments: const [
-                              ButtonSegment(
-                                  value: 'BANK',
-                                  icon: Icon(Icons.account_balance_outlined),
-                                  label: Text('Bank')),
-                              ButtonSegment(
-                                  value: 'UPI',
-                                  icon: Icon(Icons.qr_code_2_outlined),
-                                  label: Text('UPI')),
+              : DefaultTabController(
+                  key: ValueKey(_selectedOnboardingTab),
+                  length: 5,
+                  initialIndex: _selectedOnboardingTab,
+                  child: SafeArea(
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Welcome, ${widget.session.name}',
+                                style: const TextStyle(
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              const Text(
+                                'Complete identity, address and payout verification to start receiving jobs.',
+                                style: TextStyle(color: BrandColors.muted),
+                              ),
+                              const SizedBox(height: 16),
+                              Container(
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: BrandColors.muted
+                                        .withValues(alpha: 0.35),
+                                  ),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: const TabBar(
+                                  isScrollable: true,
+                                  tabAlignment: TabAlignment.start,
+                                  dividerColor: Colors.transparent,
+                                  tabs: [
+                                    Tab(text: 'Overview'),
+                                    Tab(text: 'Identity'),
+                                    Tab(text: 'Address'),
+                                    Tab(text: 'Payout'),
+                                    Tab(text: 'Status'),
+                                  ],
+                                ),
+                              ),
                             ],
-                            selected: {_payoutMethod},
-                            onSelectionChanged: (value) =>
-                                setState(() => _payoutMethod = value.first),
                           ),
-                          const SizedBox(height: 12),
-                          TextField(
-                              controller: _accountHolderName,
-                              textCapitalization: TextCapitalization.words,
-                              decoration: const InputDecoration(
-                                  labelText: 'Account holder name')),
-                          const SizedBox(height: 12),
-                          if (_payoutMethod == 'BANK') ...[
-                            TextField(
-                                controller: _last4,
-                                keyboardType: TextInputType.number,
-                                maxLength: 4,
-                                decoration: const InputDecoration(
-                                    labelText: 'Final four account digits',
-                                    counterText: '')),
-                            const SizedBox(height: 12),
-                            TextField(
-                                controller: _ifsc,
-                                textCapitalization:
-                                    TextCapitalization.characters,
-                                decoration: const InputDecoration(
-                                    labelText: 'IFSC code')),
-                          ] else
-                            TextField(
-                                controller: _upiId,
-                                keyboardType: TextInputType.emailAddress,
-                                decoration:
-                                    const InputDecoration(labelText: 'UPI ID')),
-                          const SizedBox(height: 12),
-                          OutlinedButton(
-                              onPressed: _isBusy('payout') ? null : _savePayout,
-                              child: Text(_buttonLabel(
-                                  'payout', 'Save payout details'))),
-                        ],
+                        ),
+                        Expanded(
+                          child: TabBarView(
+                            children: [
+                              _buildOverviewTab(),
+                              _buildIdentityTab(),
+                              _buildAddressTab(),
+                              _buildPayoutTab(),
+                              _buildStatusTab(),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+    );
+  }
+
+  Widget _buildOverviewTab() {
+    final profile = _profile;
+    final readyForJobs = profile?['readyForJobs'] == true;
+    final statuses = [
+      _status('identityStatus'),
+      _status('panStatus'),
+      _status('selfieStatus'),
+      _status('addressStatus'),
+    ];
+    final approvedCount =
+        statuses.where((status) => status == 'APPROVED').length;
+    final progress = approvedCount / statuses.length;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 72,
+                  height: 72,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CircularProgressIndicator(
+                        value: progress,
+                        strokeWidth: 7,
+                        backgroundColor:
+                            BrandColors.muted.withValues(alpha: 0.22),
                       ),
-                      _PartnerFormCard(
-                        number: '8',
-                        title: 'Start receiving jobs',
-                        children: [
-                          Text(
-                            readyForJobs
-                                ? 'All checks are approved. You can go available now.'
-                                : 'This only succeeds after Ops approves every required compliance, safety and payout item.',
-                            style: const TextStyle(color: BrandColors.muted),
-                          ),
-                          const SizedBox(height: 12),
-                          _PartnerStatusCard(
-                              title: 'Job availability',
-                              status: profile?['availability']?.toString() ??
-                                  'OFFLINE',
-                              icon: Icons.work_outline),
-                          const SizedBox(height: 12),
-                          FilledButton.icon(
-                            onPressed:
-                                _isBusy('available') ? null : _setAvailable,
-                            icon: const Icon(Icons.toggle_on_outlined),
-                            label:
-                                Text(_buttonLabel('available', 'Go available')),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      FilledButton.icon(
-                        onPressed: _loading ? null : _loadProfile,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Refresh status'),
+                      Text(
+                        '${(progress * 100).round()}%',
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Overall progress',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        '$approvedCount of ${statuses.length} checks approved',
+                        style: const TextStyle(color: BrandColors.muted),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        _OnboardingExpansionCard(
+          number: '1',
+          title: 'Identity verification',
+          status: _identityGroupStatus,
+          initiallyExpanded: true,
+          children: [
+            _PartnerStatusCard(
+              title: 'Identity document',
+              status: _status('identityStatus'),
+              icon: Icons.badge_outlined,
+            ),
+            const SizedBox(height: 10),
+            _PartnerStatusCard(
+              title: 'PAN verification',
+              status: _status('panStatus'),
+              icon: Icons.assignment_ind_outlined,
+            ),
+            const SizedBox(height: 10),
+            _PartnerStatusCard(
+              title: 'Selfie / profile photo',
+              status: _status('selfieStatus'),
+              icon: Icons.account_circle_outlined,
+            ),
+          ],
+        ),
+        _OnboardingExpansionCard(
+          number: '2',
+          title: 'Address verification',
+          status: _status('addressStatus'),
+          children: [
+            _PartnerStatusCard(
+              title: 'Address and proof',
+              status: _status('addressStatus'),
+              icon: Icons.location_on_outlined,
+            ),
+          ],
+        ),
+        _OnboardingExpansionCard(
+          number: '3',
+          title: 'Payout details',
+          status: _payoutStatus,
+          children: [
+            _PartnerStatusCard(
+              title: 'Payout verification',
+              status: _payoutStatus,
+              icon: Icons.account_balance_outlined,
+            ),
+          ],
+        ),
+        _OnboardingExpansionCard(
+          number: '4',
+          title: 'Start receiving jobs',
+          status: readyForJobs ? 'READY' : 'LOCKED',
+          children: [
+            Text(
+              readyForJobs
+                  ? 'All required checks are approved. You can go available now.'
+                  : 'This option unlocks after identity, address and payout approval.',
+              style: const TextStyle(color: BrandColors.muted),
+            ),
+            const SizedBox(height: 12),
+            _PartnerStatusCard(
+              title: 'Job availability',
+              status: profile?['availability']?.toString() ?? 'OFFLINE',
+              icon: Icons.work_outline,
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed:
+                  !readyForJobs || _isBusy('available') ? null : _setAvailable,
+              icon: const Icon(Icons.toggle_on_outlined),
+              label: Text(_buttonLabel('available', 'Go available')),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.dashboard_customize_outlined,
+                      color: BrandColors.lime,
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Open Partner Dashboard',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          SizedBox(height: 5),
+                          Text(
+                            'You can open the dashboard even while verification is pending. Going online and receiving jobs remain locked until approval.',
+                            style: TextStyle(color: BrandColors.muted),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _openPartnerDashboard,
+                    icon: Icon(Icons.arrow_forward),
+                    label: Text('Go to Dashboard'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: _loading ? null : _loadProfile,
+          icon: const Icon(Icons.refresh),
+          label: const Text('Refresh status'),
+        ),
+      ],
     );
+  }
+
+  Widget _buildIdentityTab() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+      children: [
+        _OnboardingExpansionCard(
+          number: '1',
+          title: 'Identity document',
+          status: _status('identityStatus'),
+          initiallyExpanded: true,
+          children: [
+            const Text(
+              'Accepted: PAN, driving licence, voter ID, passport or masked Aadhaar as PDF, JPG or PNG.',
+              style: TextStyle(color: BrandColors.muted),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () =>
+                  _pickDocument((document) => _identityDocument = document),
+              icon: const Icon(Icons.upload_file_outlined),
+              label: Text(
+                _identityDocument?.name ?? 'Choose identity document',
+              ),
+            ),
+            const SizedBox(height: 10),
+            FilledButton(
+              onPressed: _isBusy('identity') ? null : _submitIdentity,
+              child: Text(_buttonLabel('identity', 'Submit identity')),
+            ),
+          ],
+        ),
+        _OnboardingExpansionCard(
+          number: '2',
+          title: 'PAN verification',
+          status: _status('panStatus'),
+          children: [
+            TextField(
+              controller: _panNumber,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(labelText: 'PAN number'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _panName,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(labelText: 'Name on PAN'),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () =>
+                  _pickDocument((document) => _panDocument = document),
+              icon: const Icon(Icons.upload_file_outlined),
+              label: Text(_panDocument?.name ?? 'Choose PAN document'),
+            ),
+            const SizedBox(height: 10),
+            FilledButton(
+              onPressed: _isBusy('pan') ? null : _submitPan,
+              child: Text(_buttonLabel('pan', 'Submit PAN')),
+            ),
+          ],
+        ),
+        _OnboardingExpansionCard(
+          number: '3',
+          title: 'Selfie / profile photo',
+          status: _status('selfieStatus'),
+          children: [
+            const Text(
+              'Upload a current JPG or PNG photo for safety review and profile matching.',
+              style: TextStyle(color: BrandColors.muted),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () =>
+                  _pickDocument((document) => _profilePhoto = document),
+              icon: const Icon(Icons.add_a_photo_outlined),
+              label: Text(_profilePhoto?.name ?? 'Choose photo'),
+            ),
+            const SizedBox(height: 10),
+            FilledButton(
+              onPressed: _isBusy('photo') ? null : _submitProfilePhoto,
+              child: Text(_buttonLabel('photo', 'Submit photo')),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAddressTab() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+      children: [
+        _OnboardingExpansionCard(
+          number: '1',
+          title: 'Address verification',
+          status: _status('addressStatus'),
+          initiallyExpanded: true,
+          children: [
+            const Text(
+              'Add your address details and upload address proof as PDF, JPG or PNG.',
+              style: TextStyle(color: BrandColors.muted),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _currentAddress,
+              minLines: 2,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'Current address'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _permanentAddress,
+              minLines: 2,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'Permanent address'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _city,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(labelText: 'City'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _state,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(labelText: 'State'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _pinCode,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(
+                labelText: 'PIN code',
+                counterText: '',
+              ),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () =>
+                  _pickDocument((document) => _addressDocument = document),
+              icon: const Icon(Icons.upload_file_outlined),
+              label: Text(_addressDocument?.name ?? 'Choose address proof'),
+            ),
+            const SizedBox(height: 10),
+            FilledButton(
+              onPressed: _isBusy('address') ? null : _saveAddress,
+              child: Text(_buttonLabel('address', 'Submit address and proof')),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPayoutTab() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+      children: [
+        _OnboardingExpansionCard(
+          number: '1',
+          title: 'Payout details',
+          status: _payoutStatus,
+          initiallyExpanded: true,
+          children: [
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment<String>(
+                  value: 'BANK',
+                  icon: Icon(Icons.account_balance_outlined),
+                  label: Text('Bank'),
+                ),
+                ButtonSegment<String>(
+                  value: 'UPI',
+                  icon: Icon(Icons.qr_code_2_outlined),
+                  label: Text('UPI'),
+                ),
+              ],
+              selected: {_payoutMethod},
+              onSelectionChanged: (value) =>
+                  setState(() => _payoutMethod = value.first),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _accountHolderName,
+              textCapitalization: TextCapitalization.words,
+              decoration:
+                  const InputDecoration(labelText: 'Account holder name'),
+            ),
+            const SizedBox(height: 12),
+            if (_payoutMethod == 'BANK') ...[
+              TextField(
+                controller: _accountNumber,
+                keyboardType: TextInputType.number,
+                maxLength: 18,
+                obscureText: true,
+                enableSuggestions: false,
+                autocorrect: false,
+                decoration: const InputDecoration(
+                  labelText: 'Account number',
+                  hintText: 'Enter full bank account number',
+                  counterText: '',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _ifsc,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(labelText: 'IFSC code'),
+              ),
+            ] else
+              TextField(
+                controller: _upiId,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(labelText: 'UPI ID'),
+              ),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: _isBusy('payout') ? null : _savePayout,
+              child: Text(_buttonLabel('payout', 'Save payout details')),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatusTab() {
+    if (_statusLoading && _applicationStatusData == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final outcome = _applicationOutcome;
+    final stageIndex = _currentStageIndex;
+    final correctionReason = _safeCorrectionReason;
+    final lastUpdated = _statusLastUpdated;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+      children: [
+        const Text(
+          'Application status',
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Track your application from submission to Partner activation.',
+          style: TextStyle(color: BrandColors.muted),
+        ),
+        const SizedBox(height: 16),
+        _ApplicationStatusSummary(
+          outcome: outcome,
+          stageLabel: _stageLabel(stageIndex),
+          stageNumber: stageIndex + 1,
+          totalStages: _applicationStages.length,
+          lastUpdated: lastUpdated,
+        ),
+        if (_statusError != null) ...[
+          const SizedBox(height: 14),
+          _ApplicationMessageCard(
+            icon: Icons.cloud_off_outlined,
+            title: 'Status unavailable',
+            message: _statusError!,
+            accent: Colors.orangeAccent,
+          ),
+        ],
+        const SizedBox(height: 18),
+        const Text(
+          'Status timeline',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 12),
+        _ApplicationTimeline(
+          stages: _applicationStages,
+          currentStage: stageIndex,
+          outcome: outcome,
+        ),
+        const SizedBox(height: 18),
+        if (outcome == 'CHANGES_REQUIRED')
+          _ApplicationMessageCard(
+            icon: Icons.edit_note_outlined,
+            title: 'Changes required',
+            message: correctionReason ??
+                'One or more sections need correction before review can continue.',
+            accent: Colors.orangeAccent,
+          )
+        else if (outcome == 'APPROVED')
+          const _ApplicationMessageCard(
+            icon: Icons.verified_outlined,
+            title: 'Application approved',
+            message:
+                'Your Partner application has been approved. You can continue to the dashboard.',
+            accent: BrandColors.lime,
+          )
+        else if (outcome == 'REJECTED')
+          _ApplicationMessageCard(
+            icon: Icons.cancel_outlined,
+            title: 'Application rejected',
+            message: correctionReason ??
+                'Your application could not be approved. Contact support for assistance.',
+            accent: Colors.redAccent,
+          )
+        else
+          const _ApplicationMessageCard(
+            icon: Icons.hourglass_top_outlined,
+            title: 'Under review',
+            message:
+                'Your application is being reviewed. No action is required unless MaidItQuick requests changes.',
+            accent: Colors.amber,
+          ),
+        const SizedBox(height: 14),
+        if (outcome == 'CHANGES_REQUIRED')
+          FilledButton.icon(
+            onPressed: _goToCorrectionSection,
+            icon: const Icon(Icons.build_outlined),
+            label: const Text('Fix details'),
+          )
+        else if (outcome == 'APPROVED')
+          FilledButton.icon(
+            onPressed: _setAvailable,
+            icon: const Icon(Icons.dashboard_outlined),
+            label: const Text('Continue to dashboard'),
+          ),
+        if (outcome == 'CHANGES_REQUIRED' || outcome == 'REJECTED')
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: OutlinedButton.icon(
+              onPressed: () => _showMessage(
+                'Contact MaidItQuick support for help with this application.',
+              ),
+              icon: const Icon(Icons.support_agent_outlined),
+              label: const Text('Contact support'),
+            ),
+          ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: _statusLoading ? null : () => _loadApplicationStatus(),
+          icon: const Icon(Icons.refresh),
+          label: Text(_statusLoading ? 'Refreshing...' : 'Refresh status'),
+        ),
+      ],
+    );
+  }
+
+  static const List<String> _applicationStages = [
+    'Profile completed',
+    'KYC submitted',
+    'Documents under review',
+    'Background verification',
+    'Bank verification',
+    'Final approval',
+    'Partner activated',
+  ];
+
+  String get _applicationOutcome {
+    final raw = (_applicationStatusData?['outcome'] ??
+            _applicationStatusData?['status'] ??
+            _applicationStatusData?['applicationStatus'] ??
+            'UNDER_REVIEW')
+        .toString()
+        .toUpperCase()
+        .replaceAll(' ', '_');
+
+    if (raw.contains('CHANGE')) return 'CHANGES_REQUIRED';
+    if (raw.contains('APPROV')) return 'APPROVED';
+    if (raw.contains('REJECT')) return 'REJECTED';
+    return 'UNDER_REVIEW';
+  }
+
+  int get _currentStageIndex {
+    final data = _applicationStatusData;
+
+    final numeric = data?['stageIndex'] ??
+        data?['currentStageIndex'] ??
+        data?['stageNumber'];
+    if (numeric is num) {
+      final value = numeric.toInt();
+      if (data?['stageNumber'] != null) {
+        return (value - 1).clamp(0, _applicationStages.length - 1);
+      }
+      return value.clamp(0, _applicationStages.length - 1);
+    }
+
+    final raw =
+        (data?['currentStage'] ?? data?['stage'] ?? data?['stageLabel'] ?? '')
+            .toString()
+            .toLowerCase();
+
+    for (var index = 0; index < _applicationStages.length; index++) {
+      final label = _applicationStages[index].toLowerCase();
+      if (raw == label || raw.contains(label) || label.contains(raw)) {
+        return index;
+      }
+    }
+
+    if (_applicationOutcome == 'APPROVED') {
+      return _applicationStages.length - 1;
+    }
+
+    if (_status('identityStatus') == 'APPROVED' &&
+        _status('panStatus') == 'APPROVED' &&
+        _status('selfieStatus') == 'APPROVED') {
+      return 2;
+    }
+
+    return 0;
+  }
+
+  String? get _safeCorrectionReason {
+    final value = _applicationStatusData?['correctionReason'] ??
+        _applicationStatusData?['partnerMessage'] ??
+        _applicationStatusData?['rejectionReason'];
+
+    final text = value?.toString().trim();
+    return text == null || text.isEmpty ? null : text;
+  }
+
+  String get _statusLastUpdated {
+    final value = _applicationStatusData?['lastUpdatedAt'] ??
+        _applicationStatusData?['updatedAt'] ??
+        _applicationStatusData?['statusUpdatedAt'];
+
+    final text = value?.toString().trim();
+    return text == null || text.isEmpty ? 'Not available' : text;
+  }
+
+  String _stageLabel(int index) =>
+      _applicationStages[index.clamp(0, _applicationStages.length - 1)];
+
+  void _goToCorrectionSection() {
+    final section = (_applicationStatusData?['correctionSection'] ??
+            _applicationStatusData?['requiredActionSection'] ??
+            '')
+        .toString()
+        .toLowerCase();
+
+    final controller = DefaultTabController.of(context);
+
+    if (section.contains('address')) {
+      controller.animateTo(2);
+    } else if (section.contains('bank') ||
+        section.contains('payout') ||
+        section.contains('upi')) {
+      controller.animateTo(3);
+    } else {
+      controller.animateTo(1);
+    }
+  }
+
+  String get _identityGroupStatus {
+    final statuses = [
+      _status('identityStatus'),
+      _status('panStatus'),
+      _status('selfieStatus'),
+    ];
+    if (statuses.every((status) => status == 'APPROVED')) return 'APPROVED';
+    if (statuses.any((status) => status == 'PENDING')) return 'PENDING';
+    if (statuses.any((status) => status == 'REJECTED'))
+      return 'ACTION REQUIRED';
+    return 'NOT SUBMITTED';
+  }
+
+  String get _payoutStatus {
+    final profile = _profile;
+    return profile?['payoutStatus']?.toString() ??
+        profile?['payoutVerificationStatus']?.toString() ??
+        (profile?['payoutConfigured'] == true ? 'APPROVED' : 'NOT SUBMITTED');
   }
 
   String _status(String key) => _profile?[key]?.toString() ?? 'NOT_SUBMITTED';
   bool _isBusy(String action) => _busyAction == action;
   String _buttonLabel(String action, String label) =>
       _isBusy(action) ? 'Saving...' : label;
+}
+
+class _ApplicationStatusSummary extends StatelessWidget {
+  const _ApplicationStatusSummary({
+    required this.outcome,
+    required this.stageLabel,
+    required this.stageNumber,
+    required this.totalStages,
+    required this.lastUpdated,
+  });
+
+  final String outcome;
+  final String stageLabel;
+  final int stageNumber;
+  final int totalStages;
+  final String lastUpdated;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = outcome.replaceAll('_', ' ');
+    final color = switch (outcome) {
+      'APPROVED' => BrandColors.lime,
+      'CHANGES_REQUIRED' => Colors.orangeAccent,
+      'REJECTED' => Colors.redAccent,
+      _ => Colors.amber,
+    };
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.fact_check_outlined, color: color),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                Text(
+                  '$stageNumber/$totalStages',
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            LinearProgressIndicator(
+              value: stageNumber / totalStages,
+              minHeight: 8,
+              backgroundColor: BrandColors.muted.withValues(alpha: 0.22),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              stageLabel,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Last updated: $lastUpdated',
+              style: const TextStyle(
+                color: BrandColors.muted,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ApplicationTimeline extends StatelessWidget {
+  const _ApplicationTimeline({
+    required this.stages,
+    required this.currentStage,
+    required this.outcome,
+  });
+
+  final List<String> stages;
+  final int currentStage;
+  final String outcome;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: List.generate(stages.length, (index) {
+        final complete = index < currentStage ||
+            (outcome == 'APPROVED' && index <= currentStage);
+        final current = index == currentStage;
+        final isLast = index == stages.length - 1;
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 38,
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 15,
+                    backgroundColor: complete
+                        ? BrandColors.lime
+                        : current
+                            ? BrandColors.lime.withValues(alpha: 0.22)
+                            : BrandColors.muted.withValues(alpha: 0.18),
+                    foregroundColor: complete
+                        ? BrandColors.evergreen
+                        : current
+                            ? BrandColors.lime
+                            : BrandColors.muted,
+                    child: complete
+                        ? const Icon(Icons.check, size: 18)
+                        : Text(
+                            '${index + 1}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                  ),
+                  if (!isLast)
+                    Container(
+                      width: 2,
+                      height: 54,
+                      color: complete
+                          ? BrandColors.lime
+                          : BrandColors.muted.withValues(alpha: 0.25),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: current
+                        ? BrandColors.lime
+                        : BrandColors.muted.withValues(alpha: 0.25),
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        stages[index],
+                        style: TextStyle(
+                          fontWeight:
+                              current ? FontWeight.w800 : FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    if (current)
+                      const Text(
+                        'CURRENT',
+                        style: TextStyle(
+                          color: BrandColors.lime,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      }),
+    );
+  }
+}
+
+class _ApplicationMessageCard extends StatelessWidget {
+  const _ApplicationMessageCard({
+    required this.icon,
+    required this.title,
+    required this.message,
+    required this.accent,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: accent),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    message,
+                    style: const TextStyle(
+                      color: BrandColors.muted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OnboardingExpansionCard extends StatelessWidget {
+  const _OnboardingExpansionCard({
+    required this.number,
+    required this.title,
+    required this.status,
+    required this.children,
+    this.initiallyExpanded = false,
+  });
+
+  final String number;
+  final String title;
+  final String status;
+  final List<Widget> children;
+  final bool initiallyExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = status.toUpperCase().replaceAll('_', ' ');
+    final approved = normalized == 'APPROVED' ||
+        normalized == 'READY' ||
+        normalized == 'AVAILABLE';
+    final pending = normalized == 'PENDING';
+    final locked = normalized == 'LOCKED';
+    final statusColor = approved
+        ? BrandColors.lime
+        : pending
+            ? Colors.amber
+            : locked
+                ? BrandColors.muted
+                : Colors.orangeAccent;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        initiallyExpanded: initiallyExpanded,
+        tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
+        leading: CircleAvatar(
+          radius: 14,
+          backgroundColor: approved
+              ? BrandColors.lime
+              : BrandColors.muted.withValues(alpha: 0.28),
+          foregroundColor: approved
+              ? BrandColors.evergreen
+              : Theme.of(context).colorScheme.onSurface,
+          child: Text(
+            number,
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+        ),
+        title: Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(
+          normalized,
+          style: TextStyle(
+            color: statusColor,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        children: children,
+      ),
+    );
+  }
 }
 
 class _PartnerFormCard extends StatelessWidget {
@@ -1583,7 +2304,7 @@ class _PartnerConsentScreen extends StatelessWidget {
               icon: Icons.badge_outlined,
               title: 'Identity and safety review',
               body:
-                  'We collect identity documents, PAN, selfie, address proof and police verification only to review Partner eligibility.'),
+                  'We collect identity documents, PAN, selfie and address proof only to review Partner eligibility.'),
           const _ConsentPoint(
               icon: Icons.account_balance_outlined,
               title: 'Payout setup',

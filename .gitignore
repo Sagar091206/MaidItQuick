@@ -1,40 +1,35 @@
-# Secrets and local configuration
-.env
-.env.*
-!.env.example
-*.pem
-*.key
-
-# Logs and runtime data
-*.log
-server/uploads/
-server/target/
-
-# Flutter/Dart generated files
-.tooling/
+# Flutter
 mobile/.dart_tool/
+mobile/.flutter-plugins
 mobile/.flutter-plugins-dependencies
-mobile/.pub-cache/
+mobile/.packages
 mobile/build/
-mobile/coverage/
-
-# Android/Gradle generated or machine-specific files
 mobile/android/.gradle/
-mobile/android/.kotlin/
 mobile/android/local.properties
-mobile/android/*.iml
-mobile/android/app/debug/
-mobile/android/app/profile/
-mobile/android/app/release/
+mobile/ios/Pods/
+mobile/.idea/
 
-# IDE and OS files
+# Java / Maven
+server/target/
+server/.mvn/wrapper/maven-wrapper.jar
+*.class
+*.log
+
+# IDE
 .idea/
 .vscode/
 *.iml
+
+# Environment and secrets
+.env
+.env.*
+application-local.yml
+application-local.properties
+
+# Uploads
+server/uploads/
+uploads/
+
+# Operating system
 .DS_Store
 Thumbs.db
-
-# Packaged artifacts
-*.apk
-*.aab
-*.zip
