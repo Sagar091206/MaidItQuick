@@ -1,5 +1,13 @@
 # MaidItQuick
 
+## Interfaces
+
+- `mobile/` — customer and worker mobile application
+- `web-prototype/` — customer-facing web prototype
+- `admin-web/` — administrator web application
+- `server/` — shared MySQL API and domain model for all interfaces
+
+The admin client intentionally uses the existing `ADMIN` user role and `/api/admin/**` endpoints. It does not run a separate PostgreSQL service or duplicate customer/worker tables.
 MaidItQuick is a home-services MVP for customers and maid partners. This repository contains the mobile app, backend API, project documents, and the earlier web prototype.
 
 ## Repository layout

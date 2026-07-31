@@ -31,6 +31,8 @@ mobile/android/app/release/
 .idea/
 .vscode/
 *.iml
+admin-web/node_modules/
+admin-web/dist/
 .DS_Store
 Thumbs.db
 
