@@ -9,6 +9,9 @@ import '../../../core/document_picker.dart';
 import '../../../shared/widgets/brand_primary_button.dart';
 import '../../../shared/widgets/otp_text_field.dart';
 import '../../auth/data/auth_repository.dart';
+import '../../booking/data/booking_repository.dart';
+import '../../booking/data/customer_addresses_repository.dart';
+import '../../booking/data/service_catalog_repository.dart';
 import '../../profile/presentation/complete_profile_screen.dart';
 
 class WelcomeScreen extends StatelessWidget {
@@ -118,12 +121,14 @@ class _AuthScreenState extends State<AuthScreen> {
   final _phone = TextEditingController();
   final _otp = TextEditingController();
   final _customerOtp = TextEditingController();
+  final _customerName = TextEditingController();
   OtpChallenge? _partnerChallenge;
   OtpChallenge? _customerChallenge;
   Timer? _customerOtpTimer;
   int _customerOtpSecondsRemaining = 0;
   _CountryCode _customerCountry = _customerCountries.first;
   bool _isRegistering = true;
+  bool _isCustomerRegistering = false;
   bool _submitting = false;
   bool _verified = false;
   String _otpCode = '';
@@ -136,6 +141,7 @@ class _AuthScreenState extends State<AuthScreen> {
     _phone.dispose();
     _otp.dispose();
     _customerOtp.dispose();
+    _customerName.dispose();
     super.dispose();
   }
 
@@ -193,6 +199,9 @@ class _AuthScreenState extends State<AuthScreen> {
               api: widget.api,
               phone: result.phone,
               pendingToken: pendingToken,
+              initialName: _isCustomerRegistering
+                  ? _customerName.text.trim()
+                  : '',
             ),
           ),
         );
@@ -325,6 +334,20 @@ class _AuthScreenState extends State<AuthScreen> {
     });
   }
 
+  void _toggleCustomerMode() {
+    _customerOtpTimer?.cancel();
+    setState(() {
+      _isCustomerRegistering = !_isCustomerRegistering;
+      _customerChallenge = null;
+      _customerOtpSecondsRemaining = 0;
+      _otpCode = '';
+      _verified = false;
+      _otpBoxesKey = UniqueKey();
+    });
+    _customerOtp.clear();
+    _customerName.clear();
+  }
+
   void _handleCustomerBack() {
     if (_submitting) return;
     if (_customerChallenge != null) {
@@ -401,10 +424,14 @@ class _AuthScreenState extends State<AuthScreen> {
                   compact: compact,
                   title: awaitingOtp
                       ? 'Verify your number'
-                      : 'Welcome to MaidItQuick',
+                      : _isCustomerRegistering
+                          ? 'Create your account'
+                          : 'Welcome to MaidItQuick',
                   subtitle: awaitingOtp
                       ? 'We sent a six-digit code to ${_maskPhone(challenge.phone)}'
-                      : 'Sign in securely with your mobile number. No passwords needed.',
+                      : _isCustomerRegistering
+                          ? 'Enter your name and mobile number. We will verify it with an OTP.'
+                          : 'Sign in securely with your mobile number. No passwords needed.',
                   step: awaitingOtp ? 2 : 1,
                 ),
                 const SizedBox(height: 16),
@@ -444,6 +471,42 @@ class _AuthScreenState extends State<AuthScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(
+                      value: false,
+                      icon: Icon(Icons.login_outlined),
+                      label: Text('Sign in')),
+                  ButtonSegment(
+                      value: true,
+                      icon: Icon(Icons.person_add_alt_1_outlined),
+                      label: Text('Sign up')),
+                ],
+                selected: {_isCustomerRegistering},
+                onSelectionChanged: _submitting
+                    ? null
+                    : (selection) => _toggleCustomerMode(),
+                showSelectedIcon: false,
+              ),
+              const SizedBox(height: 20),
+              if (_isCustomerRegistering) ...[
+                TextFormField(
+                  controller: _customerName,
+                  textCapitalization: TextCapitalization.words,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: 'Full name',
+                    prefixIcon: Icon(Icons.badge_outlined),
+                  ),
+                  validator: (value) =>
+                      value == null || value.trim().isEmpty
+                          ? 'Enter your full name'
+                          : null,
+                ),
+                const SizedBox(height: 14),
+              ],
               DropdownButtonFormField<_CountryCode>(
                 initialValue: _customerCountry,
                 isExpanded: true,
@@ -498,17 +561,6 @@ class _AuthScreenState extends State<AuthScreen> {
                 icon: Icons.sms_outlined,
                 label: 'Send OTP',
                 busy: _submitting,
-              ),
-              const SizedBox(height: 8),
-              const _AuthDivider(label: 'or continue with'),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: _submitting
-                    ? null
-                    : () => _showMessage(
-                        'Google Sign-In is not configured for this local MVP. Use OTP to continue.'),
-                icon: const Icon(Icons.g_mobiledata),
-                label: const Text('Continue with Google'),
               ),
               const SizedBox(height: 12),
               _AuthTermsRow(onShowMessage: _showMessage),
@@ -835,17 +887,21 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
 
   Future<void> _loadInitialData() async {
     try {
+      final catalog = ServiceCatalogRepository(widget.api);
+      final addresses = CustomerAddressesRepository(widget.api);
       final data = await Future.wait<dynamic>([
-        widget.api.get('/services'),
-        widget.api.get('/customer/addresses', token: widget.session.token),
+        catalog.listServices(),
+        addresses.list(widget.session.token),
       ]);
       if (!mounted) return;
       final services = List<Map<String, dynamic>>.from(data[0] as List);
-      final addresses = List<Map<String, dynamic>>.from(data[1] as List);
+      final savedAddresses = List<CustomerAddress>.from(data[1] as List)
+          .map((entry) => entry.toMap())
+          .toList();
       setState(() {
         _services = services;
-        _addresses = addresses;
-        _selectedAddress = _defaultAddress(addresses);
+        _addresses = savedAddresses;
+        _selectedAddress = _defaultAddress(savedAddresses);
         if (services.isNotEmpty) {
           _selectedServices.add(services.first['name']?.toString() ?? '');
           _selectedServices.remove('');
@@ -886,13 +942,9 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
       return;
     }
     try {
-      final result = Map<String, dynamic>.from(
-        await widget.api.post('/booking/calculate-duration',
-            {'services': selected}),
-      );
-      if (mounted) {
-        setState(() => _duration = (result['durationMinutes'] as num).toInt());
-      }
+      final minutes =
+          await ServiceCatalogRepository(widget.api).calculateDuration(selected);
+      if (mounted) setState(() => _duration = minutes);
     } on ApiException {
       if (mounted) setState(() => _duration = selected.length * 60);
     }
@@ -934,18 +986,19 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
     _recomputeDuration();
   }
 
-  Map<String, dynamic> _addressPayload({required bool defaultAddress}) => {
-        'label': _label.text.trim(),
-        'houseNumber': _houseNumber.text.trim(),
-        'building': _building.text.trim(),
-        'street': _street.text.trim(),
-        'area': _area.text.trim(),
-        'landmark': _landmark.text.trim(),
-        'city': _city.text.trim(),
-        'state': _state.text.trim(),
-        'pinCode': _pin.text.trim(),
-        'defaultAddress': defaultAddress,
-      };
+  CustomerAddressDraft _addressPayload({required bool defaultAddress}) =>
+      CustomerAddressDraft(
+        label: _label.text.trim(),
+        houseNumber: _houseNumber.text.trim(),
+        building: _building.text.trim(),
+        street: _street.text.trim(),
+        area: _area.text.trim(),
+        landmark: _landmark.text.trim(),
+        city: _city.text.trim(),
+        state: _state.text.trim(),
+        pinCode: _pin.text.trim(),
+        defaultAddress: defaultAddress,
+      );
 
   bool get _addressFormValid =>
       _label.text.trim().isNotEmpty &&
@@ -966,21 +1019,21 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
     try {
       final payload = _addressPayload(
           defaultAddress: makeDefault || _addresses.isEmpty || _editingAddressId == null);
-      final saved = Map<String, dynamic>.from(await ( _editingAddressId == null
-          ? widget.api.post('/customer/addresses', payload,
-              token: widget.session.token)
-          : widget.api.put('/customer/addresses/$_editingAddressId', payload,
-              token: widget.session.token)) as Map);
+      final repository = CustomerAddressesRepository(widget.api);
+      final saved = _editingAddressId == null
+          ? await repository.create(widget.session.token, payload)
+          : await repository.update(
+              widget.session.token, _editingAddressId!, payload);
       if (!mounted) return;
       setState(() {
         if (_editingAddressId == null) {
-          _addresses = [saved, ..._addresses.where((item) => item['id'] != saved['id'])];
+          _addresses = [saved.toMap(), ..._addresses.where((item) => item['id'] != saved.id)];
         } else {
           _addresses = _addresses
-              .map((item) => item['id'] == saved['id'] ? saved : item)
+              .map((item) => item['id'] == saved.id ? saved.toMap() : item)
               .toList();
         }
-        _selectedAddress = saved;
+        _selectedAddress = saved.toMap();
         _editingAddressId = null;
         _availability = null;
       });
@@ -995,21 +1048,18 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
 
   Future<void> _setDefaultAddress(Map<String, dynamic> address) async {
     try {
-      final saved = Map<String, dynamic>.from(await widget.api.put(
-            '/customer/addresses/${address['id']}/default',
-            {},
-            token: widget.session.token,
-          ) as Map);
+      final saved = await CustomerAddressesRepository(widget.api)
+          .setDefault(widget.session.token, (address['id'] as num).toInt());
       if (!mounted) return;
       setState(() {
         _addresses = _addresses
             .map((item) => {
                   ...item,
-                  'defaultAddress': item['id'] == saved['id'],
+                  'defaultAddress': item['id'] == saved.id,
                 })
             .toList();
-        _selectedAddress = saved;
-        _pin.text = saved['pinCode']?.toString() ?? '';
+        _selectedAddress = saved.toMap();
+        _pin.text = saved.pinCode;
       });
       await _checkAvailability();
     } on ApiException catch (error) {
@@ -1031,8 +1081,8 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
     );
     if (confirmed != true || !mounted) return;
     try {
-      await widget.api.delete('/customer/addresses/${address['id']}',
-          token: widget.session.token);
+      await CustomerAddressesRepository(widget.api)
+          .delete(widget.session.token, (address['id'] as num).toInt());
       if (!mounted) return;
       setState(() {
         _addresses = _addresses.where((item) => item['id'] != address['id']).toList();
@@ -1087,11 +1137,16 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
       return;
     }
     try {
-      final result = Map<String, dynamic>.from(
-        await widget.api.get('/availability?pinCode=${_pin.text.trim()}')
-            as Map,
-      );
-      if (mounted) setState(() => _availability = result);
+      final result = await ServiceCatalogRepository(widget.api)
+          .checkAvailability(_pin.text.trim());
+      if (mounted) {
+        setState(() => _availability = {
+              'status': result.status,
+              'label': result.label,
+              'message': result.message,
+              if (result.etaMinutes != null) 'etaMinutes': result.etaMinutes,
+            });
+      }
     } on ApiException catch (error) {
       _showMessage(error.message);
     }
@@ -1156,24 +1211,28 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
     setState(() => _booking = true);
     try {
       final selected = _selectedServiceNames;
-      final booking = Map<String, dynamic>.from(await widget.api.post(
-        '/bookings',
-        {
-          'service': selected.join(', '),
-          'services': selected,
-          'address': address['address']?.toString(),
-          'pinCode': address['pinCode']?.toString(),
-          'scheduledFor': _scheduled.toIso8601String(),
-          'durationMinutes': _duration,
-          'optionLabel': 'Standard service',
-          'promoCode': '',
-          'specialInstructions': _specialInstructions.text.trim(),
-        },
-        token: widget.session.token,
-      ) as Map);
+      final booking = await BookingRepository(widget.api).create(
+        widget.session.token,
+        services: selected,
+        address: address['address']?.toString() ?? '',
+        pinCode: address['pinCode']?.toString() ?? '',
+        scheduledFor: _scheduled.toIso8601String(),
+        durationMinutes: _duration,
+        specialInstructions: _specialInstructions.text.trim(),
+      );
       if (!mounted) return;
       setState(() {
-        _confirmedBooking = booking;
+        _confirmedBooking = {
+          'id': booking.id,
+          'service': booking.service,
+          'address': booking.address,
+          'pinCode': booking.pinCode,
+          'scheduledFor': booking.scheduledFor,
+          'durationMinutes': booking.durationMinutes,
+          'specialInstructions': booking.specialInstructions,
+          'status': booking.status,
+          'worker': booking.worker,
+        };
         _reviewing = false;
       });
     } on ApiException catch (error) {
@@ -2716,34 +2775,6 @@ class _AuthStepPill extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _AuthDivider extends StatelessWidget {
-  const _AuthDivider({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = context.scheme;
-    return Row(
-      children: [
-        Expanded(child: Divider(color: scheme.outlineVariant)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: scheme.onSurfaceVariant,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-        Expanded(child: Divider(color: scheme.outlineVariant)),
-      ],
     );
   }
 }

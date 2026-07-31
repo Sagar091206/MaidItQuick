@@ -1,2 +1,2 @@
 package com.makeitquick.booking;
-public enum BookingStatus { REQUESTED, ASSIGNED, ON_THE_WAY, IN_PROGRESS, COMPLETED, CANCELLED }
+public enum BookingStatus { REQUESTED, ASSIGNED, ACCEPTED, ON_THE_WAY, ARRIVED, IN_PROGRESS, COMPLETED, CANCELLED }

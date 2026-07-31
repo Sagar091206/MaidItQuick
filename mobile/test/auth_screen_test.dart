@@ -22,9 +22,35 @@ void main() {
         findsOneWidget);
     expect(find.text('Country'), findsOneWidget);
     expect(find.text('Send OTP'), findsOneWidget);
-    expect(find.text('Continue with Google'), findsOneWidget);
+    expect(find.text('Sign in'), findsOneWidget);
+    expect(find.text('Sign up'), findsOneWidget);
+    expect(find.text('Continue with Google'), findsNothing);
     expect(find.text('Terms'), findsOneWidget);
     expect(find.text('Privacy'), findsOneWidget);
+  });
+
+  testWidgets('customer auth screen shows signup option',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(const MaidItQuickApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Continue as customer'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Create your account'), findsNothing);
+    expect(find.widgetWithText(TextFormField, 'Full name'), findsNothing);
+
+    await tester.tap(find.text('Sign up'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Create your account'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'Full name'), findsOneWidget);
+
+    await tester.tap(find.text('Sign in'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Welcome to MaidItQuick'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'Full name'), findsNothing);
   });
 
   testWidgets('customer send-otp button gates on a valid number',

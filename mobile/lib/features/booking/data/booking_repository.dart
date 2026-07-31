@@ -5,6 +5,36 @@ class BookingRepository {
 
   final ApiClient _api;
 
+  Future<CustomerBooking> create(
+    String token, {
+    required List<String> services,
+    String? service,
+    required String address,
+    required String pinCode,
+    required String scheduledFor,
+    int? durationMinutes,
+    String optionLabel = 'Standard service',
+    String promoCode = '',
+    String specialInstructions = '',
+  }) async {
+    final payload = Map<String, dynamic>.from(await _api.post(
+      '/bookings',
+      {
+        'service': service ?? services.join(', '),
+        'services': services,
+        'address': address,
+        'pinCode': pinCode,
+        'scheduledFor': scheduledFor,
+        if (durationMinutes != null) 'durationMinutes': durationMinutes,
+        'optionLabel': optionLabel,
+        'promoCode': promoCode,
+        'specialInstructions': specialInstructions,
+      },
+      token: token,
+    ) as Map);
+    return CustomerBooking.fromJson(payload);
+  }
+
   Future<List<CustomerBooking>> list(String token) async {
     final payload = await _api.get('/bookings', token: token) as List;
     return payload

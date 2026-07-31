@@ -1,7 +1,6 @@
 package com.makeitquick.notification;
 
-import com.makeitquick.security.Session;
-import com.makeitquick.security.SessionRepository;
+import com.makeitquick.security.SessionResolver;
 import com.makeitquick.security.UserAccount;
 import com.makeitquick.security.UserRepository;
 import java.util.List;
@@ -22,12 +21,12 @@ import org.springframework.web.server.ResponseStatusException;
 @CrossOrigin(origins = "*")
 public class NotificationController {
     private final NotificationRepository notifications;
-    private final SessionRepository sessions;
+    private final SessionResolver resolver;
     private final UserRepository users;
 
-    NotificationController(NotificationRepository notifications, SessionRepository sessions, UserRepository users) {
+    NotificationController(NotificationRepository notifications, SessionResolver resolver, UserRepository users) {
         this.notifications = notifications;
-        this.sessions = sessions;
+        this.resolver = resolver;
         this.users = users;
     }
 
@@ -65,8 +64,7 @@ public class NotificationController {
     }
 
     private UserAccount requireUser(String authorization) {
-        String token = authorization == null ? "" : authorization.replaceFirst("(?i)^Bearer\\s+", "");
-        return sessions.findByToken(token).filter(Session::valid).map(Session::getUser)
+        return resolver.fromBearer(authorization)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Please sign in"));
     }
 

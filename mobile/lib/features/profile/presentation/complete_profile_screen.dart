@@ -16,11 +16,13 @@ class CompleteProfileScreen extends StatefulWidget {
     required this.api,
     required this.phone,
     required this.pendingToken,
+    this.initialName = '',
   });
 
   final ApiClient api;
   final String phone;
   final String pendingToken;
+  final String initialName;
 
   @override
   State<CompleteProfileScreen> createState() => _CompleteProfileScreenState();
@@ -28,7 +30,8 @@ class CompleteProfileScreen extends StatefulWidget {
 
 class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _name = TextEditingController();
+  late final TextEditingController _name =
+      TextEditingController(text: widget.initialName);
   final _email = TextEditingController();
   String? _gender;
   DateTime? _dob;

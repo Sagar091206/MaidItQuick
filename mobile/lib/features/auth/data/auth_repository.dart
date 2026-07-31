@@ -66,7 +66,7 @@ class AuthRepository {
       'purpose': purpose,
       'otp': otp,
     });
-    return Session(token: payload['token'] as String, role: payload['role'] as String, name: payload['name'] as String);
+    return Session.fromJson(Map<String, dynamic>.from(payload as Map));
   }
 }
 
@@ -98,7 +98,7 @@ class Session {
 
   factory Session.fromJson(Map<String, dynamic> json) => Session(
         token: json['token'] as String,
-        role: json['role'] as String,
+        role: json['role'] as String? ?? 'customer',
         name: json['name'] as String? ?? '',
       );
 

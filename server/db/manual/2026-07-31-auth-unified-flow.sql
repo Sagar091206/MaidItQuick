@@ -22,6 +22,27 @@ PREPARE phone_unique_stmt FROM @add_phone_unique_sql;
 EXECUTE phone_unique_stmt;
 DEALLOCATE PREPARE phone_unique_stmt;
 
+-- 0. Expand the purpose column from the old enum to a VARCHAR so the new
+--    CUSTOMER_AUTH purpose fits. Older databases created the column as
+--    enum('LOGIN','SIGNUP','CUSTOMER_LOGIN') which rejects CUSTOMER_AUTH and
+--    CUSTOMER_SIGNUP with a Data truncation error on every OTP insert.
+SET @purpose_is_enum := (
+    SELECT COUNT(*)
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'partner_otps'
+      AND COLUMN_NAME = 'purpose'
+      AND DATA_TYPE = 'enum'
+);
+SET @fix_purpose_sql := IF(
+    @purpose_is_enum > 0,
+    'ALTER TABLE partner_otps MODIFY purpose VARCHAR(32) NOT NULL',
+    'SELECT 1'
+);
+PREPARE fix_purpose_stmt FROM @fix_purpose_sql;
+EXECUTE fix_purpose_stmt;
+DEALLOCATE PREPARE fix_purpose_stmt;
+
 -- 2. Index OTP lookups by phone + creation time (resend counting and rate limits).
 SET @otp_idx := (
     SELECT COUNT(*)

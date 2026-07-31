@@ -1,12 +1,12 @@
 package com.makeitquick.security;
 import jakarta.persistence.*; import java.time.Instant; import java.time.LocalDate; import java.util.UUID;
-@Entity @Table(name="users")
+@Entity @Table(name="users", uniqueConstraints=@UniqueConstraint(name="uq_users_phone_role", columnNames={"phone","role"}))
 public class UserAccount {
  @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
  @Column(nullable=false) private String name;
  @Column(nullable=false) private String email="";
  @Column(nullable=false) private String passwordHash;
- @Column(nullable=false,unique=true) private String phone;
+ @Column(nullable=false) private String phone;
  @Enumerated(EnumType.STRING) @Column(nullable=false) private Role role;
  @Column(nullable=false) private boolean enabled=true;
  @Column(nullable=false) private boolean emailNotifications=true;

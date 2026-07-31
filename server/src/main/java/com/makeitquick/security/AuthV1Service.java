@@ -26,7 +26,7 @@ import org.springframework.web.server.ResponseStatusException;
  * <p>Implements the single path used by the mobile app: send OTP, verify OTP,
  * and either sign the existing customer in or issue a short-lived pending
  * registration token that {@link #completeProfile} exchanges for an account.
- * OTPs expire after a short window (default 60 seconds), resends are rate
+ * OTPs expire after a short window (default 300 seconds), resends are rate
  * limited and capped, failed attempts lock the challenge after five tries, and
  * delivery goes through the configured {@link SmsSender}.</p>
  */
@@ -119,7 +119,7 @@ public class AuthV1Service {
         challenge.consume();
         partnerOtps.save(challenge);
 
-        var existing = users.findByPhone(phone).filter(UserAccount::isEnabled);
+        var existing = users.findByPhoneAndRole(phone, Role.CUSTOMER).filter(UserAccount::isEnabled);
         if (existing.isPresent()) {
             UserAccount user = existing.get();
             log.info("OTP verified for {} (existing customer)", mask(phone));
@@ -149,7 +149,7 @@ public class AuthV1Service {
                         HttpStatus.BAD_REQUEST,
                         "Verification expired or already used. Request a new OTP."));
         String phone = pending.getPhone();
-        users.findByPhone(phone).ifPresent(user -> {
+        users.findByPhoneAndRole(phone, Role.CUSTOMER).ifPresent(user -> {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "An account already exists for this phone number. Sign in instead.");

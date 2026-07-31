@@ -54,7 +54,7 @@ public class AuthService {
 
     public Map<String, Object> startCustomerSignup(String name, String rawPhone, String email) {
         String phone = normalizeCustomerPhone(rawPhone);
-        users.findByPhone(phone).ifPresent(user -> {
+        users.findByPhoneAndRole(phone, Role.CUSTOMER).ifPresent(user -> {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "An account already exists for this phone number. Sign in instead.");
@@ -110,7 +110,7 @@ public class AuthService {
     }
 
     private UserAccount findOrCreateCustomer(String phone) {
-        return users.findByPhone(phone)
+        return users.findByPhoneAndRole(phone, Role.CUSTOMER)
                 .filter(UserAccount::isEnabled)
                 .orElseGet(() -> {
                     UserAccount user = new UserAccount(
@@ -125,7 +125,7 @@ public class AuthService {
     }
 
     private UserAccount createCustomer(String phone, String name, String email) {
-        users.findByPhone(phone).ifPresent(user -> {
+        users.findByPhoneAndRole(phone, Role.CUSTOMER).ifPresent(user -> {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "An account already exists for this phone number. Sign in instead.");

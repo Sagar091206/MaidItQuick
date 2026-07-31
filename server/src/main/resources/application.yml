@@ -29,7 +29,7 @@ app:
     jwt-expiry-days: ${JWT_EXPIRY_DAYS:30}
     # Customer OTP policy (unified /api/v1/auth flow).
     otp:
-      expiry-seconds: ${OTP_EXPIRY_SECONDS:60}
+      expiry-seconds: ${OTP_EXPIRY_SECONDS:300}
       max-attempts: ${OTP_MAX_ATTEMPTS:5}
       max-sends: ${OTP_MAX_SENDS:4}
       send-window-minutes: ${OTP_SEND_WINDOW_MINUTES:10}

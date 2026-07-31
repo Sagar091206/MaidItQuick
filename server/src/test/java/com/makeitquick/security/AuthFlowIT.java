@@ -49,7 +49,7 @@ class AuthFlowIT {
 
         assertThat(sent.get("message").asText()).isEqualTo("OTP sent");
         assertThat(sent.get("phone").asText()).isEqualTo("+919876543210");
-        assertThat(sent.get("expiresInSeconds").asInt()).isEqualTo(60);
+        assertThat(sent.get("expiresInSeconds").asInt()).isEqualTo(300);
         assertThat(sent.get("devOtp").asText()).matches("\\d{6}");
     }
 
@@ -170,6 +170,68 @@ class AuthFlowIT {
                 "pendingToken", secondPending.get("pendingToken").asText(), "name", "Duplicate")), 409);
         assertThat(error.get("message").asText())
                 .isEqualTo("An account already exists for this phone number. Sign in instead.");
+    }
+
+    @Test
+    void partnerPhoneCanAlsoRegisterAsCustomer() throws Exception {
+        String phone = "+919999000014";
+
+        // 1. Register as a partner first.
+        JsonNode signupSent = postJson("/api/auth/partner/otp/signup/start",
+                Map.of("name", "Partner First", "phone", phone));
+        JsonNode partnerSigned = postJson("/api/auth/partner/otp/verify", Map.of(
+                "phone", signupSent.get("phone").asText(),
+                "purpose", "signup",
+                "otp", signupSent.get("devOtp").asText()));
+        assertThat(partnerSigned.get("role").asText()).isEqualTo("WORKER");
+
+        // 2. The customer flow must NOT sign the partner account in; it returns
+        //    a pending registration so a separate customer account is created.
+        JsonNode customerSent = sendOtp(phone);
+        JsonNode pending = postJson("/api/v1/auth/verify-otp", Map.of(
+                "phone", customerSent.get("phone").asText(),
+                "otp", customerSent.get("devOtp").asText()));
+        assertThat(pending.get("existing").asBoolean()).isFalse();
+        assertThat(pending.get("pendingToken").asText()).isNotBlank();
+
+        // 3. Complete the customer profile; both accounts now coexist.
+        JsonNode created = postJson("/api/v1/auth/complete-profile", Map.of(
+                "pendingToken", pending.get("pendingToken").asText(),
+                "name", "Customer Second",
+                "email", "customer@example.com"));
+        assertThat(created.get("role").asText()).isEqualTo("CUSTOMER");
+        assertThat(created.get("phone").asText()).isEqualTo(phone);
+
+        // 4. The partner account still signs in as a partner.
+        JsonNode loginSent = postJson("/api/auth/partner/otp/login/start", Map.of("phone", phone));
+        JsonNode partnerAgain = postJson("/api/auth/partner/otp/verify", Map.of(
+                "phone", phone,
+                "purpose", "login",
+                "otp", loginSent.get("devOtp").asText()));
+        assertThat(partnerAgain.get("role").asText()).isEqualTo("WORKER");
+    }
+
+    @Test
+    void customerPhoneCanAlsoRegisterAsPartner() throws Exception {
+        String phone = "+919999000015";
+        registerCustomer(phone, "Customer First");
+
+        // Customer sign-in still resolves to the customer account.
+        JsonNode customerSent = sendOtp(phone);
+        JsonNode customerBack = postJson("/api/v1/auth/verify-otp", Map.of(
+                "phone", phone,
+                "otp", customerSent.get("devOtp").asText()));
+        assertThat(customerBack.get("existing").asBoolean()).isTrue();
+        assertThat(customerBack.get("role").asText()).isEqualTo("CUSTOMER");
+
+        // Partner signup with the same number must create a separate account.
+        JsonNode signupSent = postJson("/api/auth/partner/otp/signup/start",
+                Map.of("name", "Partner Later", "phone", phone));
+        JsonNode partnerSigned = postJson("/api/auth/partner/otp/verify", Map.of(
+                "phone", signupSent.get("phone").asText(),
+                "purpose", "signup",
+                "otp", signupSent.get("devOtp").asText()));
+        assertThat(partnerSigned.get("role").asText()).isEqualTo("WORKER");
     }
 
     @Test
