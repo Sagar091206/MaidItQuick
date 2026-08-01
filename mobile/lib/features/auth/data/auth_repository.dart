@@ -47,10 +47,20 @@ class AuthRepository {
     await _api.post('/auth/logout', {}, token: token);
   }
 
-  Future<OtpChallenge> startPartnerSignup({required String name, required String phone}) async {
+  Future<OtpChallenge> startPartnerSignup({
+    required String name,
+    required String phone,
+    String? gender,
+    String? dob,
+    String? profileImage,
+  }) async {
     final payload = await _api.post('/auth/partner/otp/signup/start', {
       'name': name,
       'phone': phone,
+      if (gender != null && gender.isNotEmpty) 'gender': gender,
+      if (dob != null && dob.isNotEmpty) 'dob': dob,
+      if (profileImage != null && profileImage.isNotEmpty)
+        'profileImage': profileImage,
     });
     return OtpChallenge.fromJson(Map<String, dynamic>.from(payload as Map));
   }

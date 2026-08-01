@@ -129,7 +129,9 @@ import UniformTypeIdentifiers
   private func localeFor(_ languageCode: String) -> String {
     let code = languageCode.lowercased()
     if code.hasPrefix("mr") || code.hasPrefix("bn") {
-      // Fall back to Hindi when Marathi/Bengali voices are unavailable.
+      // No native Marathi/Bengali voices ship with iOS; the consent
+      // audioScript for these languages is transliterated into Devanagari,
+      // which the Hindi voice reads correctly.
       return "hi-IN"
     }
     if code.hasPrefix("hi") {

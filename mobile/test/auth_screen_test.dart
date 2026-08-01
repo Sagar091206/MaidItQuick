@@ -18,15 +18,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Welcome to MaidItQuick'), findsOneWidget);
-    expect(find.widgetWithText(TextFormField, 'Mobile number'),
-        findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'Mobile number'), findsOneWidget);
     expect(find.text('Country'), findsOneWidget);
     expect(find.text('Send OTP'), findsOneWidget);
-    expect(find.text('Sign in'), findsOneWidget);
-    expect(find.text('Sign up'), findsOneWidget);
     expect(find.text('Continue with Google'), findsNothing);
     expect(find.text('Terms'), findsOneWidget);
     expect(find.text('Privacy'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+        find.text('New to MaidItQuick? Create an account'), 200,
+        scrollable: find.byType(Scrollable).first);
+    expect(find.text('New to MaidItQuick? Create an account'), findsOneWidget);
+    expect(find.text('Sign in'), findsNothing);
+    expect(find.text('Sign up'), findsNothing);
   });
 
   testWidgets('customer auth screen shows signup option',
@@ -40,13 +44,19 @@ void main() {
     expect(find.text('Create your account'), findsNothing);
     expect(find.widgetWithText(TextFormField, 'Full name'), findsNothing);
 
-    await tester.tap(find.text('Sign up'));
+    await tester.scrollUntilVisible(
+        find.text('New to MaidItQuick? Create an account'), 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('New to MaidItQuick? Create an account'));
     await tester.pumpAndSettle();
 
     expect(find.text('Create your account'), findsOneWidget);
     expect(find.widgetWithText(TextFormField, 'Full name'), findsOneWidget);
 
-    await tester.tap(find.text('Sign in'));
+    await tester.scrollUntilVisible(
+        find.text('Already have an account? Sign in'), 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('Already have an account? Sign in'));
     await tester.pumpAndSettle();
 
     expect(find.text('Welcome to MaidItQuick'), findsOneWidget);
@@ -62,12 +72,12 @@ void main() {
     await tester.pumpAndSettle();
 
     final sendOtp = find.widgetWithText(FilledButton, 'Send OTP');
-    expect(tester.widget<FilledButton>(sendOtp).enabled, isFalse);
+    expect(tester.widget<FilledButton>(sendOtp).enabled, isTrue);
 
     await tester.enterText(
         find.widgetWithText(TextFormField, 'Mobile number'), '123');
     await tester.pump();
-    expect(tester.widget<FilledButton>(sendOtp).enabled, isFalse);
+    expect(tester.widget<FilledButton>(sendOtp).enabled, isTrue);
 
     await tester.enterText(
         find.widgetWithText(TextFormField, 'Mobile number'), '9876543210');

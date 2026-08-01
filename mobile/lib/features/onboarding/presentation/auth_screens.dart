@@ -6,8 +6,11 @@ import 'package:flutter/services.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/brand_theme.dart';
+import '../../../shared/services/profile_photo_picker.dart';
 import '../../../shared/widgets/brand_primary_button.dart';
+import '../../../shared/widgets/onboarding_bottom_bar.dart';
 import '../../../shared/widgets/otp_text_field.dart';
+import '../../../shared/widgets/profile_avatar.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../profile/presentation/complete_profile_screen.dart';
 
@@ -17,6 +20,7 @@ String _otpHelperText(OtpChallenge challenge, String fallback) {
   if (challenge.devOtp == null) return fallback;
   return kDebugMode ? 'Dev OTP: ${challenge.devOtp}' : fallback;
 }
+
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key, required this.onChooseRole});
 
@@ -125,6 +129,9 @@ class _AuthScreenState extends State<AuthScreen> {
   final _otp = TextEditingController();
   final _customerOtp = TextEditingController();
   final _customerName = TextEditingController();
+  String? _partnerGender;
+  DateTime? _partnerDob;
+  String? _partnerProfileImage;
   OtpChallenge? _partnerChallenge;
   OtpChallenge? _customerChallenge;
   Timer? _customerOtpTimer;
@@ -136,6 +143,12 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _verified = false;
   String _otpCode = '';
   Key _otpBoxesKey = UniqueKey();
+
+  static const _partnerGenderOptions = [
+    ('MALE', 'Male'),
+    ('FEMALE', 'Female'),
+    ('OTHER', 'Other'),
+  ];
 
   @override
   void dispose() {
@@ -221,6 +234,16 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _submitPartner() async {
+    if (_isRegistering) {
+      if (_partnerGender == null) {
+        _showMessage('Select your gender.');
+        return;
+      }
+      if (_partnerDob == null) {
+        _showMessage('Enter your date of birth.');
+        return;
+      }
+    }
     if (!_formKey.currentState!.validate()) return;
     setState(() => _submitting = true);
     try {
@@ -229,7 +252,12 @@ class _AuthScreenState extends State<AuthScreen> {
       if (challenge == null) {
         final next = _isRegistering
             ? await repository.startPartnerSignup(
-                name: _name.text.trim(), phone: _phone.text.trim())
+                name: _name.text.trim(),
+                phone: _phone.text.trim(),
+                gender: _partnerGender,
+                dob: _partnerDobPayload(),
+                profileImage: _partnerProfileImage,
+              )
             : await repository.startPartnerLogin(phone: _phone.text.trim());
         if (!mounted) return;
         setState(() {
@@ -294,6 +322,50 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  Future<void> _pickPartnerPhoto() async {
+    try {
+      final photo = await pickProfilePhotoDataUri();
+      if (photo != null && mounted) {
+        setState(() => _partnerProfileImage = photo);
+      }
+    } catch (_) {
+      _showMessage('Could not open the photo gallery.');
+    }
+  }
+
+  Future<void> _pickPartnerDob() async {
+    final today = DateTime.now();
+    final selected = await showDatePicker(
+      context: context,
+      initialDate:
+          _partnerDob ?? DateTime(today.year - 25, today.month, today.day),
+      firstDate: DateTime(today.year - 100, 1, 1),
+      lastDate: DateTime(today.year - 18, today.month, today.day),
+    );
+    if (selected != null && mounted) setState(() => _partnerDob = selected);
+  }
+
+  String _partnerDobPayload() {
+    final dob = _partnerDob;
+    if (dob == null) return '';
+    return '${dob.year.toString().padLeft(4, '0')}-${dob.month.toString().padLeft(2, '0')}-${dob.day.toString().padLeft(2, '0')}';
+  }
+
+  String _partnerDobLabel() {
+    final dob = _partnerDob;
+    if (dob == null) return 'Date of birth (required, 18+)';
+    return '${dob.day}/${dob.month}/${dob.year}';
+  }
+
+  String get _partnerInitials {
+    final name = _name.text.trim();
+    if (name.isEmpty) return '?';
+    final parts = name.split(RegExp(r'\s+'));
+    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
+    return '${parts.first.substring(0, 1)}${parts.last.substring(0, 1)}'
+        .toUpperCase();
+  }
+
   void _changePartnerPhone() {
     setState(() {
       _partnerChallenge = null;
@@ -309,7 +381,12 @@ class _AuthScreenState extends State<AuthScreen> {
       final repository = AuthRepository(widget.api);
       final next = _isRegistering
           ? await repository.startPartnerSignup(
-              name: _name.text.trim(), phone: challenge.phone)
+              name: _name.text.trim(),
+              phone: challenge.phone,
+              gender: _partnerGender,
+              dob: _partnerDobPayload(),
+              profileImage: _partnerProfileImage,
+            )
           : await repository.startPartnerLogin(phone: challenge.phone);
       if (!mounted) return;
       setState(() {
@@ -414,12 +491,11 @@ class _AuthScreenState extends State<AuthScreen> {
             tooltip: 'Back'),
         title: const Text('Customer'),
       ),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 600),
+      body: Column(
+        children: [
+          Expanded(
             child: ListView(
-              padding: EdgeInsets.fromLTRB(20, compact ? 10 : 20, 20, 24),
+              padding: EdgeInsets.fromLTRB(20, compact ? 10 : 20, 20, 8),
               children: [
                 _AuthBrandHeader(
                   compact: compact,
@@ -454,137 +530,121 @@ class _AuthScreenState extends State<AuthScreen> {
                       ? _buildCustomerOtpCard(compact, challenge)
                       : _buildCustomerDetailsCard(compact),
                 ),
+                if (!awaitingOtp) ...[
+                  const SizedBox(height: 12),
+                  TextButton(
+                    onPressed: _submitting ? null : _toggleCustomerMode,
+                    child: Text(_isCustomerRegistering
+                        ? 'Already have an account? Sign in'
+                        : 'New to MaidItQuick? Create an account'),
+                  ),
+                ],
               ],
             ),
+          ),
+          OnboardingBottomBar(
+            child: BrandPrimaryButton(
+              onPressed: _submitting ? null : _submit,
+              icon: awaitingOtp
+                  ? Icons.verified_user_outlined
+                  : Icons.sms_outlined,
+              label: awaitingOtp ? 'Verify and continue' : 'Send OTP',
+              busy: _submitting,
+              busyLabel: awaitingOtp ? 'Verifying...' : null,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCustomerDetailsCard(bool compact) {
+    return Card(
+      key: const ValueKey('customer-details'),
+      child: Padding(
+        padding: EdgeInsets.all(compact ? 18 : 26),
+        child: Form(
+          key: _customerDetailsFormKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_isCustomerRegistering) ...[
+                TextFormField(
+                  controller: _customerName,
+                  textCapitalization: TextCapitalization.words,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: 'Full name',
+                    prefixIcon: Icon(Icons.badge_outlined),
+                  ),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Enter your full name'
+                      : null,
+                ),
+                const SizedBox(height: 14),
+              ],
+              DropdownButtonFormField<_CountryCode>(
+                initialValue: _customerCountry,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Country',
+                  prefixIcon: Icon(Icons.public_outlined),
+                ),
+                items: _customerCountries
+                    .where((country) => country.code == '+91')
+                    .map(
+                      (country) => DropdownMenuItem<_CountryCode>(
+                        value: country,
+                        child: Text('${country.name} (${country.code})'),
+                      ),
+                    )
+                    .toList(),
+                onChanged: _submitting
+                    ? null
+                    : (country) {
+                        if (country == null) return;
+                        setState(() {
+                          _customerCountry = country;
+                          _phone.clear();
+                        });
+                      },
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _phone,
+                keyboardType: TextInputType.phone,
+                autocorrect: false,
+                enableSuggestions: false,
+                autofillHints: const [
+                  AutofillHints.telephoneNumberNational,
+                ],
+                inputFormatters: [
+                  _NationalNumberInputFormatter(
+                    _customerCountry.nationalDigits,
+                  ),
+                ],
+                decoration: InputDecoration(
+                  labelText: 'Mobile number',
+                  helperText: '${_customerCountry.nationalDigits}-digit number',
+                  prefixIcon: const Icon(Icons.phone_outlined),
+                  prefixText: '${_customerCountry.code} ',
+                ),
+                validator: _validateCustomerPhone,
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 24),
+              _AuthTermsRow(
+                onShowMessage: _showMessage,
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildCustomerDetailsCard(bool compact) {
-  return Card(
-    key: const ValueKey('customer-details'),
-    child: Padding(
-      padding: EdgeInsets.all(compact ? 18 : 26),
-      child: Form(
-        key: _customerDetailsFormKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(
-                  value: false,
-                  icon: Icon(Icons.login_outlined),
-                  label: Text('Sign in'),
-                ),
-                ButtonSegment(
-                  value: true,
-                  icon: Icon(Icons.person_add_alt_1_outlined),
-                  label: Text('Sign up'),
-                ),
-              ],
-              selected: {_isCustomerRegistering},
-              onSelectionChanged:
-                  _submitting ? null : (selection) => _toggleCustomerMode(),
-              showSelectedIcon: false,
-            ),
-            const SizedBox(height: 20),
-
-            if (_isCustomerRegistering) ...[
-              TextFormField(
-                controller: _customerName,
-                textCapitalization: TextCapitalization.words,
-                autocorrect: false,
-                enableSuggestions: false,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'Full name',
-                  prefixIcon: Icon(Icons.badge_outlined),
-                ),
-                validator: (value) =>
-                    value == null || value.trim().isEmpty
-                        ? 'Enter your full name'
-                        : null,
-              ),
-              const SizedBox(height: 14),
-            ],
-
-            DropdownButtonFormField<_CountryCode>(
-              initialValue: _customerCountry,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Country',
-                prefixIcon: Icon(Icons.public_outlined),
-              ),
-              items: _customerCountries
-                  .where((country) => country.code == '+91')
-                  .map(
-                    (country) => DropdownMenuItem<_CountryCode>(
-                      value: country,
-                      child: Text('${country.name} (${country.code})'),
-                    ),
-                  )
-                  .toList(),
-              onChanged: _submitting
-                  ? null
-                  : (country) {
-                      if (country == null) return;
-                      setState(() {
-                        _customerCountry = country;
-                        _phone.clear();
-                      });
-                    },
-            ),
-
-            const SizedBox(height: 14),
-
-            TextFormField(
-              controller: _phone,
-              keyboardType: TextInputType.phone,
-              autocorrect: false,
-              enableSuggestions: false,
-              autofillHints: const [
-                AutofillHints.telephoneNumberNational,
-              ],
-              inputFormatters: [
-                _NationalNumberInputFormatter(
-                  _customerCountry.nationalDigits,
-                ),
-              ],
-              decoration: InputDecoration(
-                labelText: 'Mobile number',
-                helperText:
-                    '${_customerCountry.nationalDigits}-digit number',
-                prefixIcon: const Icon(Icons.phone_outlined),
-                prefixText: '${_customerCountry.code} ',
-              ),
-              validator: _validateCustomerPhone,
-              onChanged: (_) => setState(() {}),
-            ),
-
-            const SizedBox(height: 24),
-
-            BrandPrimaryButton(
-              onPressed:
-                  _submitting || !_customerPhoneValid ? null : _submit,
-              icon: Icons.sms_outlined,
-              label: 'Send OTP',
-              busy: _submitting,
-            ),
-
-            const SizedBox(height: 12),
-
-            _AuthTermsRow(
-              onShowMessage: _showMessage,
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-}
   Widget _buildCustomerOtpCard(bool compact, OtpChallenge challenge) {
     final resendLabel = _customerOtpSecondsRemaining > 0
         ? 'Resend in ${_customerOtpSecondsRemaining}s'
@@ -661,16 +721,6 @@ class _AuthScreenState extends State<AuthScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 14),
-                      BrandPrimaryButton(
-                        onPressed: _submitting || _otpCode.length != 6
-                            ? null
-                            : _submit,
-                        icon: Icons.verified_user_outlined,
-                        label: 'Verify and continue',
-                        busy: _submitting,
-                        busyLabel: 'Verifying...',
-                      ),
                     ],
                   ),
                 ),
@@ -681,10 +731,6 @@ class _AuthScreenState extends State<AuthScreen> {
 
   String _e164CustomerPhone(String raw) =>
       '${_customerCountry.code}${raw.replaceAll(RegExp(r'\D'), '')}';
-
-  bool get _customerPhoneValid =>
-      _phone.text.trim().replaceAll(RegExp(r'\D'), '').length ==
-      _customerCountry.nationalDigits;
 
   String? _validateCustomerPhone(String? value) {
     final digits = (value ?? '').trim().replaceAll(RegExp(r'\D'), '');
@@ -705,7 +751,7 @@ class _AuthScreenState extends State<AuthScreen> {
         : 'Enter OTP';
     final subtitle = challenge == null
         ? _isRegistering
-            ? 'Start with your name and phone number. We will verify it with an OTP.'
+            ? 'Tell us about yourself. We will verify your phone number with an OTP.'
             : 'Enter your phone number and we will send you an OTP.'
         : 'OTP sent to ${_maskPhone(challenge.phone)}';
 
@@ -717,104 +763,178 @@ class _AuthScreenState extends State<AuthScreen> {
             tooltip: 'Back'),
         title: const Text('Partner'),
       ),
-      body: SafeArea(
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(24),
-            children: [
-              const Icon(Icons.handshake_outlined,
-                  size: 46, color: BrandColors.lime),
-              const SizedBox(height: 18),
-              Text(title,
-                  style: const TextStyle(
-                      fontSize: 30, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 8),
-              Text(subtitle, style: const TextStyle(color: BrandColors.muted)),
-              const SizedBox(height: 28),
-              if (challenge == null) ...[
-                if (_isRegistering) ...[
-                  TextFormField(
-                    controller: _name,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(
-                        labelText: 'Full name',
-                        prefixIcon: Icon(Icons.person_outline)),
-                    validator: (value) => value == null || value.trim().isEmpty
-                        ? 'Enter your name'
-                        : null,
-                  ),
-                  const SizedBox(height: 14),
-                ],
-                TextFormField(
-                  controller: _phone,
-                  keyboardType: TextInputType.phone,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  inputFormatters: const [_PhoneInputFormatter()],
-                  decoration: const InputDecoration(
-                    labelText: 'Phone number',
-                    helperText: 'Use country code. India defaults to +91.',
-                    prefixIcon: Icon(Icons.phone_outlined),
-                  ),
-                  validator: (value) => value == null || value.trim().length < 8
-                      ? 'Enter a valid phone number'
-                      : null,
-                ),
-              ] else ...[
-                TextFormField(
-                  controller: _otp,
-                  keyboardType: TextInputType.number,
-                  maxLength: 6,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  inputFormatters: const [
-                    _AsciiDigitInputFormatter(maxLength: 6)
+      body: Form(
+        key: _formKey,
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                children: [
+                  const Icon(Icons.handshake_outlined,
+                      size: 46, color: BrandColors.lime),
+                  const SizedBox(height: 18),
+                  Text(title,
+                      style: const TextStyle(
+                          fontSize: 30, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 8),
+                  Text(subtitle,
+                      style: const TextStyle(color: BrandColors.muted)),
+                  const SizedBox(height: 28),
+                  if (challenge == null) ...[
+                    if (_isRegistering) ...[
+                      Center(
+                        child: Stack(
+                          children: [
+                            ProfileAvatar(
+                              initials: _partnerInitials,
+                              photoDataUri: _partnerProfileImage,
+                              radius: 44,
+                            ),
+                            Positioned(
+                              right: 0,
+                              bottom: 0,
+                              child: Material(
+                                color: Theme.of(context).colorScheme.primary,
+                                shape: const CircleBorder(),
+                                child: InkWell(
+                                  customBorder: const CircleBorder(),
+                                  onTap: _submitting ? null : _pickPartnerPhoto,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(8),
+                                    child: Icon(Icons.photo_camera_outlined,
+                                        size: 18,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onPrimary),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Center(
+                        child: TextButton(
+                          onPressed: _submitting ? null : _pickPartnerPhoto,
+                          child: const Text('Add a profile photo'),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: _name,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                            labelText: 'Full name',
+                            prefixIcon: Icon(Icons.person_outline)),
+                        validator: (value) =>
+                            value == null || value.trim().isEmpty
+                                ? 'Enter your name'
+                                : null,
+                      ),
+                      const SizedBox(height: 14),
+                      DropdownButtonFormField<String>(
+                        initialValue: _partnerGender,
+                        decoration: const InputDecoration(
+                          labelText: 'Gender',
+                          prefixIcon: Icon(Icons.wc_outlined),
+                        ),
+                        items: _partnerGenderOptions
+                            .map(
+                              (option) => DropdownMenuItem<String>(
+                                value: option.$1,
+                                child: Text(option.$2),
+                              ),
+                            )
+                            .toList(),
+                        validator: (value) =>
+                            value == null ? 'Select your gender' : null,
+                        onChanged: _submitting
+                            ? null
+                            : (value) => setState(() => _partnerGender = value),
+                      ),
+                      const SizedBox(height: 14),
+                      OutlinedButton.icon(
+                        onPressed: _submitting ? null : _pickPartnerDob,
+                        icon: const Icon(Icons.cake_outlined),
+                        label: Text(_partnerDobLabel()),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+                    TextFormField(
+                      controller: _phone,
+                      keyboardType: TextInputType.phone,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      inputFormatters: const [_PhoneInputFormatter()],
+                      decoration: const InputDecoration(
+                        labelText: 'Phone number',
+                        helperText: 'Use country code. India defaults to +91.',
+                        prefixIcon: Icon(Icons.phone_outlined),
+                      ),
+                      validator: (value) =>
+                          value == null || value.trim().length < 8
+                              ? 'Enter a valid phone number'
+                              : null,
+                    ),
+                  ] else ...[
+                    TextFormField(
+                      controller: _otp,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      inputFormatters: const [
+                        _AsciiDigitInputFormatter(maxLength: 6)
+                      ],
+                      decoration: InputDecoration(
+                        labelText: 'OTP',
+                        prefixIcon: const Icon(Icons.password_outlined),
+                        counterText: '',
+                        helperText: _otpHelperText(
+                            challenge, 'Code expires in 10 minutes.'),
+                      ),
+                      validator: (value) => value == null ||
+                              !RegExp(r'^\d{6}$').hasMatch(value.trim())
+                          ? 'Enter the six-digit OTP'
+                          : null,
+                    ),
+                    const SizedBox(height: 10),
+                    TextButton.icon(
+                        onPressed: _submitting ? null : _changePartnerPhone,
+                        icon: const Icon(Icons.edit_outlined),
+                        label: const Text('Change phone number')),
                   ],
-                  decoration: InputDecoration(
-                    labelText: 'OTP',
-                    prefixIcon: const Icon(Icons.password_outlined),
-                    counterText: '',
-                    helperText: _otpHelperText(
-                        challenge, 'Code expires in 10 minutes.'),
-                  ),
-                  validator: (value) => value == null ||
-                          !RegExp(r'^\d{6}$').hasMatch(value.trim())
-                      ? 'Enter the six-digit OTP'
-                      : null,
-                ),
-                const SizedBox(height: 10),
-                TextButton.icon(
-                    onPressed: _submitting ? null : _changePartnerPhone,
-                    icon: const Icon(Icons.edit_outlined),
-                    label: const Text('Change phone number')),
-              ],
-              const SizedBox(height: 24),
-              BrandPrimaryButton(
+                  if (challenge == null) ...[
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: _submitting ? null : _toggleMode,
+                      child: Text(_isRegistering
+                          ? 'Already have an account? Sign in'
+                          : 'New to MaidItQuick? Create an account'),
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 12),
+                    TextButton(
+                        onPressed: _submitting ? null : _resendPartnerOtp,
+                        child: const Text('Resend OTP')),
+                  ],
+                ],
+              ),
+            ),
+            OnboardingBottomBar(
+              child: BrandPrimaryButton(
                 onPressed: _submitting ? null : _submit,
                 label: challenge == null
                     ? (_isRegistering ? 'Continue' : 'Send OTP')
                     : 'Verify and continue',
                 busy: _submitting,
               ),
-              if (challenge == null) ...[
-                const SizedBox(height: 12),
-                TextButton(
-                  onPressed: _submitting ? null : _toggleMode,
-                  child: Text(_isRegistering
-                      ? 'Already have an account? Sign in'
-                      : 'New to MaidItQuick? Create an account'),
-                ),
-              ] else ...[
-                const SizedBox(height: 12),
-                TextButton(
-                    onPressed: _submitting ? null : _resendPartnerOtp,
-                    child: const Text('Resend OTP')),
-              ],
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1163,4 +1283,3 @@ String? _digitForRune(int rune) {
   }
   return null;
 }
-

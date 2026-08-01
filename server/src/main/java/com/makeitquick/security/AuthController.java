@@ -1,5 +1,6 @@
 package com.makeitquick.security;
 
+import com.makeitquick.common.ProfilePhotos;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.security.SecureRandom;
@@ -144,7 +145,8 @@ public class AuthController {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT, "A partner account already exists for this phone number. Sign in instead.");
         }
-        return otpChallenge(phone, x.name().trim(), PartnerOtpPurpose.SIGNUP);
+        String photo = normalizePhoto(x.profileImage());
+        return otpChallenge(phone, x.name().trim(), x.gender(), x.dob(), photo, PartnerOtpPurpose.SIGNUP);
     }
 
     @PostMapping("/partner/otp/login/start")
@@ -155,7 +157,7 @@ public class AuthController {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "No partner account found for this phone number. Create your account first."));
-        return otpChallenge(phone, null, PartnerOtpPurpose.LOGIN);
+        return otpChallenge(phone, null, null, null, null, PartnerOtpPurpose.LOGIN);
     }
 
     @PostMapping("/partner/otp/verify")
@@ -238,10 +240,12 @@ public class AuthController {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(b);
     }
 
-    private Map<String, Object> otpChallenge(String phone, String name, PartnerOtpPurpose purpose) {
+    private Map<String, Object> otpChallenge(String phone, String name, String gender,
+                                             LocalDate dob, String profileImage, PartnerOtpPurpose purpose) {
         String otp = String.format("%06d", random.nextInt(1_000_000));
         partnerOtps.save(new PartnerOtp(
-                phone, name, purpose, encoder.encode(otp), Instant.now().plus(Duration.ofMinutes(10))));
+                phone, name, gender, dob, profileImage, purpose, encoder.encode(otp),
+                Instant.now().plus(Duration.ofMinutes(10))));
         Map<String, Object> response = new HashMap<>(Map.of(
                 "message", "OTP sent", "phone", phone, "expiresInSeconds", 600));
         if (!smsEnabled) {
@@ -260,7 +264,25 @@ public class AuthController {
                 });
         UserAccount user = new UserAccount(challenge.getName(), "", encoder.encode(token()), phone, Role.WORKER);
         user.setEmailNotifications(false);
+        if (challenge.getGender() != null && !challenge.getGender().isBlank()) {
+            user.setGender(challenge.getGender());
+        }
+        if (challenge.getDob() != null) {
+            user.setDob(challenge.getDob());
+        }
+        if (challenge.getProfileImage() != null && !challenge.getProfileImage().isBlank()) {
+            user.setProfileImage(challenge.getProfileImage());
+        }
         return users.save(user);
+    }
+
+    private static String normalizePhoto(String profileImage) {
+        if (profileImage == null || profileImage.isBlank()) return null;
+        try {
+            return ProfilePhotos.normalize(profileImage);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
     }
 
     private static String maskEmail(String email) {
@@ -308,7 +330,13 @@ public class AuthController {
             @Email String email,
             @NotBlank @Pattern(regexp = "\\d{6}") String otp) {}
 
-    public record PartnerSignupStart(@NotBlank String name, @NotBlank String phone) {}
+    public record PartnerSignupStart(
+            @NotBlank(message = "Enter your name.") String name,
+            @NotBlank(message = "Enter a valid phone number.") String phone,
+            @Pattern(regexp = "MALE|FEMALE|OTHER|PREFER_NOT_TO_SAY", flags = Pattern.Flag.CASE_INSENSITIVE,
+                    message = "Select a valid gender.") String gender,
+            LocalDate dob,
+            @Size(max = 2_900_000, message = "The photo is too large.") String profileImage) {}
 
     public record PartnerLoginStart(@NotBlank String phone) {}
 
