@@ -84,13 +84,23 @@ class OtpChallenge {
   final String? devOtp;
 }
 
-enum UserRole {
-  customer('customer', 'Customer'),
-  partner('worker', 'Partner');
+/// Canonicalizes the role string returned by the API so callers only ever
+/// compare against `customer` or `worker` (or the reserved `admin`).
+String canonicalRole(String? role) {
+  switch ((role ?? '').trim().toUpperCase()) {
+    case 'WORKER':
+    case 'PARTNER':
+      return 'worker';
+    case 'ADMIN':
+      return 'admin';
+    default:
+      return 'customer';
+  }
+}
 
-  const UserRole(this.apiValue, this.label);
-  final String apiValue;
-  final String label;
+enum UserRole {
+  customer,
+  partner;
 }
 
 class Session {
@@ -98,13 +108,16 @@ class Session {
 
   factory Session.fromJson(Map<String, dynamic> json) => Session(
         token: json['token'] as String,
-        role: json['role'] as String? ?? 'customer',
+        role: canonicalRole(json['role'] as String?),
         name: json['name'] as String? ?? '',
       );
 
   final String token;
   final String role;
   final String name;
+
+  /// Whether this session belongs to a worker/partner (not a customer).
+  bool get isWorker => role == 'worker';
 }
 
 /// Result of verifying an OTP for the unified customer flow.
@@ -121,7 +134,7 @@ class AuthV1Result {
       session: existing
           ? Session(
               token: json['token'] as String,
-              role: json['role'] as String? ?? 'customer',
+              role: canonicalRole(json['role'] as String?),
               name: json['name'] as String? ?? '',
             )
           : null,

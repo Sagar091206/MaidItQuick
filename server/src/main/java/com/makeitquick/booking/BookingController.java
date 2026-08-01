@@ -65,6 +65,10 @@ public class BookingController {
     public Map<String, Object> create(@RequestHeader("Authorization") String h, @Valid @RequestBody Create x) {
         UserAccount u = me(h);
         role(u, Role.CUSTOMER);
+        if (!u.profileComplete()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Complete your profile before booking a service");
+        }
+        requireValidScheduledFor(x.scheduledFor());
         List<String> requested = serviceNames(x);
         for (String service : requested) {
             if (!catalog.isEnabled(service)) {
@@ -198,8 +202,11 @@ public class BookingController {
                 || b.getStatus() == BookingStatus.ON_THE_WAY) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking cannot be cancelled after the worker is on the way");
         }
-        if (!admin && b.getStatus() != BookingStatus.REQUESTED && b.getStatus() != BookingStatus.ASSIGNED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only requested or assigned bookings can be cancelled");
+        if (!admin && b.getStatus() != BookingStatus.REQUESTED
+                && b.getStatus() != BookingStatus.ASSIGNED
+                && b.getStatus() != BookingStatus.ACCEPTED) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Only requested, assigned or accepted bookings can be cancelled");
         }
         b.cancel(x.reason());
         b = repo.save(b);
@@ -220,6 +227,7 @@ public class BookingController {
         if (!b.getCustomer().getId().equals(u.getId()) || b.getStatus() != BookingStatus.REQUESTED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only unassigned customer bookings can be rescheduled");
         }
+        requireValidScheduledFor(x.scheduledFor());
         b.reschedule(x.scheduledFor());
         b = repo.save(b);
         recordEvent(b, b.getStatus(), "Rescheduled to " + b.getScheduledFor());
@@ -280,6 +288,9 @@ public class BookingController {
         if (b.getWorker() == null || !b.getWorker().getId().equals(me(h).getId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Assigned worker required");
         }
+        if (b.getStatus() != BookingStatus.ON_THE_WAY && b.getStatus() != BookingStatus.ARRIVED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Start OTP can only be issued after the worker is on the way");
+        }
         String code = String.format("%06d", random.nextInt(1_000_000));
         b.setStartOtpHash(encoder.encode(code));
         repo.save(b);
@@ -291,7 +302,13 @@ public class BookingController {
     @PostMapping("/{id}/start")
     public Map<String, Object> start(@RequestHeader("Authorization") String h, @PathVariable Long id, @RequestBody Otp x) {
         Booking b = get(id);
-        if (!b.getWorker().getId().equals(me(h).getId()) || !encoder.matches(x.code(), b.getStartOtpHash())) {
+        if (b.getWorker() == null || !b.getWorker().getId().equals(me(h).getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Assigned worker required");
+        }
+        if (b.getStatus() != BookingStatus.ON_THE_WAY && b.getStatus() != BookingStatus.ARRIVED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Worker must be on the way before starting the service");
+        }
+        if (!encoder.matches(x.code(), b.getStartOtpHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid start OTP");
         }
         b.begin();
@@ -318,7 +335,13 @@ public class BookingController {
     @PostMapping("/{id}/complete")
     public Map<String, Object> complete(@RequestHeader("Authorization") String h, @PathVariable Long id, @RequestBody Otp x) {
         Booking b = get(id);
-        if (!b.getWorker().getId().equals(me(h).getId()) || !encoder.matches(x.code(), b.getEndOtpHash())) {
+        if (b.getWorker() == null || !b.getWorker().getId().equals(me(h).getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Assigned worker required");
+        }
+        if (b.getStatus() != BookingStatus.IN_PROGRESS) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Job is not in progress");
+        }
+        if (!encoder.matches(x.code(), b.getEndOtpHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid end OTP");
         }
         b.complete();
@@ -347,6 +370,20 @@ public class BookingController {
         }
         return Map.of("invoice", "MIQ-INV-" + b.getId(), "booking", view(b),
                 "paymentStatus", "PAYMENT_GATEWAY_NOT_ENABLED");
+    }
+
+    private void requireValidScheduledFor(String scheduledFor) {
+        if (scheduledFor == null || scheduledFor.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Scheduled time is required");
+        }
+        try {
+            java.time.LocalDateTime scheduled = java.time.LocalDateTime.parse(scheduledFor);
+            if (scheduled.isBefore(java.time.LocalDateTime.now())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Scheduled time must be in the future");
+            }
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid scheduled time format");
+        }
     }
 
     private void recordEvent(Booking b, BookingStatus status, String note) {

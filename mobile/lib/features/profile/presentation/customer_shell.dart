@@ -48,9 +48,22 @@ class _CustomerShellState extends State<CustomerShell> {
           await CustomerProfileRepository(widget.api).fetch(widget.session.token);
       if (mounted) setState(() => _profile = profile);
     } on ApiException catch (error) {
+      if (error.statusCode == 401) {
+        widget.onLogout();
+        return;
+      }
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Could not reach the server. Check your connection and try again.'),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _loading = false);

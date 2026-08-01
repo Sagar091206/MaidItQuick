@@ -4,6 +4,7 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -26,6 +27,9 @@ public class AuthService {
     private final PartnerOtpRepository partnerOtps;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
     private final SecureRandom random = new SecureRandom();
+
+    @org.springframework.beans.factory.annotation.Value("${app.sms.enabled:false}")
+    private boolean smsEnabled;
 
     AuthService(UserRepository users, SessionRepository sessions, PartnerOtpRepository partnerOtps) {
         this.users = users;
@@ -106,7 +110,12 @@ public class AuthService {
         String otp = String.format("%06d", random.nextInt(1_000_000));
         partnerOtps.save(new PartnerOtp(
                 phone, name, purpose, encoder.encode(otp), Instant.now().plus(Duration.ofMinutes(10))));
-        return Map.of("message", "OTP sent", "phone", phone, "expiresInSeconds", 600, "devOtp", otp);
+        Map<String, Object> response = new HashMap<>(Map.of(
+                "message", "OTP sent", "phone", phone, "expiresInSeconds", 600));
+        if (!smsEnabled) {
+            response.put("devOtp", otp);
+        }
+        return response;
     }
 
     private UserAccount findOrCreateCustomer(String phone) {

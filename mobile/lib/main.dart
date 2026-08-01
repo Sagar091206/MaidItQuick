@@ -27,7 +27,7 @@ class _MaidItQuickAppState extends State<MaidItQuickApp> {
   Session? _session;
   UserRole? _chosenRole;
   bool _splashVisible = true;
-  ThemeMode _themeMode = ThemeMode.dark;
+  ThemeMode _themeMode = ThemeMode.system;
 
   @override
   void initState() {
@@ -46,16 +46,24 @@ class _MaidItQuickAppState extends State<MaidItQuickApp> {
 
   Future<void> _restoreSession() async {
     final stored = await _sessionStore.load();
-    if (stored != null) {
-      try {
-        final validated = await AuthRepository(_api).validateSession(stored.token);
-        if (mounted) {
-          setState(() => _session = validated);
-          await _sessionStore.save(validated);
-        }
-      } catch (_) {
-        await _sessionStore.clear();
+    if (stored == null) return;
+    try {
+      final validated = await AuthRepository(_api).validateSession(stored.token);
+      if (mounted) {
+        setState(() => _session = validated);
+        await _sessionStore.save(validated);
       }
+    } on ApiException catch (error) {
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        // The token is no longer valid — start clean.
+        await _sessionStore.clear();
+      } else if (mounted) {
+        // Server error (e.g. 5xx): tolerate it by keeping the stored session.
+        setState(() => _session = stored);
+      }
+    } catch (_) {
+      // Network unreachable: keep the stored session so the app still opens.
+      if (mounted) setState(() => _session = stored);
     }
   }
 
@@ -119,7 +127,7 @@ class _MaidItQuickAppState extends State<MaidItQuickApp> {
     }
     final session = _session;
     if (session != null) {
-      return session.role.toUpperCase() == 'WORKER'
+      return session.isWorker
           ? PartnerJourneyScreen(api: _api, session: session, onLogout: _logout)
           : CustomerShell(
               api: _api,

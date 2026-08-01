@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/booking")
@@ -31,7 +33,16 @@ public class BookingPlanningController {
     public List<Map<String, Object>> slots(
             @RequestParam @Pattern(regexp = "\\d{6}") String pinCode,
             @RequestParam(required = false) String date) {
-        LocalDate selectedDate = date == null || date.isBlank() ? LocalDate.now() : LocalDate.parse(date);
+        LocalDate selectedDate;
+        if (date == null || date.isBlank()) {
+            selectedDate = LocalDate.now();
+        } else {
+            try {
+                selectedDate = LocalDate.parse(date);
+            } catch (java.time.format.DateTimeParseException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid date. Use the YYYY-MM-DD format.");
+            }
+        }
         LocalDate today = LocalDate.now();
         LocalTime now = LocalTime.now();
         return SLOTS.stream()

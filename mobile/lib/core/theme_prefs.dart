@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Persists the user's appearance preference. The brand default is dark;
-/// "system" follows the device setting.
+/// Persists the user's appearance preference. The brand follows the device
+/// appearance by default (light-first), while users can pin Light, Dark or
+/// System from settings.
 class ThemePrefs {
   static const _key = 'miq.theme.mode';
 
-  static const _default = ThemeMode.dark;
+  static const _default = ThemeMode.system;
 
   Future<ThemeMode> load() async {
     try {
