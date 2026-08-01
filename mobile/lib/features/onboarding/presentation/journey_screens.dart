@@ -461,107 +461,128 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Widget _buildCustomerDetailsCard(bool compact) {
-    return Card(
-      key: const ValueKey('customer-details'),
-      child: Padding(
-        padding: EdgeInsets.all(compact ? 18 : 26),
-        child: Form(
-          key: _customerDetailsFormKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment(
-                      value: false,
-                      icon: Icon(Icons.login_outlined),
-                      label: Text('Sign in')),
-                  ButtonSegment(
-                      value: true,
-                      icon: Icon(Icons.person_add_alt_1_outlined),
-                      label: Text('Sign up')),
-                ],
-                selected: {_isCustomerRegistering},
-                onSelectionChanged:
-                    _submitting ? null : (selection) => _toggleCustomerMode(),
-                showSelectedIcon: false,
-              ),
-              const SizedBox(height: 20),
-              if (_isCustomerRegistering) ...[
-                TextFormField(
-                  controller: _customerName,
-                  textCapitalization: TextCapitalization.words,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    labelText: 'Full name',
-                    prefixIcon: Icon(Icons.badge_outlined),
-                  ),
-                  validator: (value) => value == null || value.trim().isEmpty
-                      ? 'Enter your full name'
-                      : null,
+  return Card(
+    key: const ValueKey('customer-details'),
+    child: Padding(
+      padding: EdgeInsets.all(compact ? 18 : 26),
+      child: Form(
+        key: _customerDetailsFormKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(
+                  value: false,
+                  icon: Icon(Icons.login_outlined),
+                  label: Text('Sign in'),
                 ),
-                const SizedBox(height: 14),
+                ButtonSegment(
+                  value: true,
+                  icon: Icon(Icons.person_add_alt_1_outlined),
+                  label: Text('Sign up'),
+                ),
               ],
-              DropdownButtonFormField<_CountryCode>(
-                initialValue: _customerCountry,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Country',
-                  prefixIcon: Icon(Icons.public_outlined),
-                ),
-                items: _customerCountries
-                    .map((country) => DropdownMenuItem<_CountryCode>(
-                          value: country,
-                          child: Text('${country.name} (${country.code})'),
-                        ))
-                    .toList(),
-                onChanged: _submitting
-                    ? null
-                    : (country) {
-                        if (country == null) return;
-                        setState(() {
-                          _customerCountry = country;
-                          _phone.clear();
-                        });
-                      },
-              ),
-              const SizedBox(height: 14),
+              selected: {_isCustomerRegistering},
+              onSelectionChanged:
+                  _submitting ? null : (selection) => _toggleCustomerMode(),
+              showSelectedIcon: false,
+            ),
+            const SizedBox(height: 20),
+
+            if (_isCustomerRegistering) ...[
               TextFormField(
-                controller: _phone,
-                keyboardType: TextInputType.phone,
+                controller: _customerName,
+                textCapitalization: TextCapitalization.words,
                 autocorrect: false,
                 enableSuggestions: false,
-                autofillHints: const [AutofillHints.telephoneNumberNational],
-                inputFormatters: [
-                  _NationalNumberInputFormatter(_customerCountry.nationalDigits)
-                ],
-                decoration: InputDecoration(
-                  labelText: 'Mobile number',
-                  helperText: '${_customerCountry.nationalDigits}-digit number',
-                  prefixIcon: const Icon(Icons.phone_outlined),
-                  prefixText: '${_customerCountry.code} ',
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'Full name',
+                  prefixIcon: Icon(Icons.badge_outlined),
                 ),
-                validator: _validateCustomerPhone,
-                onChanged: (_) => setState(() {}),
+                validator: (value) =>
+                    value == null || value.trim().isEmpty
+                        ? 'Enter your full name'
+                        : null,
               ),
-              const SizedBox(height: 24),
-              BrandPrimaryButton(
-                onPressed: _submitting || !_customerPhoneValid ? null : _submit,
-                icon: Icons.sms_outlined,
-                label: 'Send OTP',
-                busy: _submitting,
-              ),
-              const SizedBox(height: 12),
-              _AuthTermsRow(onShowMessage: _showMessage),
+              const SizedBox(height: 14),
             ],
-          ),
+
+            DropdownButtonFormField<_CountryCode>(
+              initialValue: _customerCountry,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Country',
+                prefixIcon: Icon(Icons.public_outlined),
+              ),
+              items: _customerCountries
+                  .where((country) => country.code == '+91')
+                  .map(
+                    (country) => DropdownMenuItem<_CountryCode>(
+                      value: country,
+                      child: Text('${country.name} (${country.code})'),
+                    ),
+                  )
+                  .toList(),
+              onChanged: _submitting
+                  ? null
+                  : (country) {
+                      if (country == null) return;
+                      setState(() {
+                        _customerCountry = country;
+                        _phone.clear();
+                      });
+                    },
+            ),
+
+            const SizedBox(height: 14),
+
+            TextFormField(
+              controller: _phone,
+              keyboardType: TextInputType.phone,
+              autocorrect: false,
+              enableSuggestions: false,
+              autofillHints: const [
+                AutofillHints.telephoneNumberNational,
+              ],
+              inputFormatters: [
+                _NationalNumberInputFormatter(
+                  _customerCountry.nationalDigits,
+                ),
+              ],
+              decoration: InputDecoration(
+                labelText: 'Mobile number',
+                helperText:
+                    '${_customerCountry.nationalDigits}-digit number',
+                prefixIcon: const Icon(Icons.phone_outlined),
+                prefixText: '${_customerCountry.code} ',
+              ),
+              validator: _validateCustomerPhone,
+              onChanged: (_) => setState(() {}),
+            ),
+
+            const SizedBox(height: 24),
+
+            BrandPrimaryButton(
+              onPressed:
+                  _submitting || !_customerPhoneValid ? null : _submit,
+              icon: Icons.sms_outlined,
+              label: 'Send OTP',
+              busy: _submitting,
+            ),
+
+            const SizedBox(height: 12),
+
+            _AuthTermsRow(
+              onShowMessage: _showMessage,
+            ),
+          ],
         ),
       ),
-    );
-  }
-
+    ),
+  );
+}
   Widget _buildCustomerOtpCard(bool compact, OtpChallenge challenge) {
     final resendLabel = _customerOtpSecondsRemaining > 0
         ? 'Resend in ${_customerOtpSecondsRemaining}s'
