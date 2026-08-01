@@ -7,7 +7,7 @@ class PartnerOtp {
  @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
  @Column(nullable=false) private String phone;
  private String name;
- @Enumerated(EnumType.STRING) @Column(nullable=false) private PartnerOtpPurpose purpose;
+ @Enumerated(EnumType.STRING) @Column(nullable=false, columnDefinition="varchar(50)") private PartnerOtpPurpose purpose;
  @Column(nullable=false) private String otpHash;
  @Column(nullable=false) private Instant expiresAt;
  @Column(nullable=false) private int attempts;
