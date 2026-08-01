@@ -139,6 +139,8 @@ class _DashboardBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final name =
         dashboard.welcomeName.trim().isEmpty ? 'there' : dashboard.welcomeName;
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
+    final addressCardHeight = 132.0 * (textScale < 1 ? 1 : textScale);
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
       children: [
@@ -172,7 +174,7 @@ class _DashboardBody extends StatelessWidget {
           )
         else
           SizedBox(
-            height: 118,
+            height: addressCardHeight,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: dashboard.addresses.length,
