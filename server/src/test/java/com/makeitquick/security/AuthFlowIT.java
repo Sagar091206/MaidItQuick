@@ -212,8 +212,40 @@ class AuthFlowIT {
     }
 
     @Test
-    void customerPhoneCanAlsoRegisterAsPartner() throws Exception {
-        String phone = "+919999000015";
+    void partnerSignupPersistsGenderDobAndProfilePhoto() throws Exception {
+        String phone = "+919999000030";
+        String photo = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==";
+
+        JsonNode signupSent = postJson("/api/auth/partner/otp/signup/start", Map.of(
+                "name", "Partner Details",
+                "phone", phone,
+                "gender", "MALE",
+                "dob", "1992-08-15",
+                "profileImage", photo));
+        JsonNode partnerSigned = postJson("/api/auth/partner/otp/verify", Map.of(
+                "phone", signupSent.get("phone").asText(),
+                "purpose", "signup",
+                "otp", signupSent.get("devOtp").asText()));
+        assertThat(partnerSigned.get("role").asText()).isEqualTo("WORKER");
+
+        JsonNode profile = expect(get("/api/workers/me")
+                .header("Authorization", "Bearer " + partnerSigned.get("token").asText()), 200);
+        assertThat(profile.get("gender").asText()).isEqualTo("MALE");
+        assertThat(profile.get("dob").asText()).isEqualTo("1992-08-15");
+        assertThat(profile.get("profileImage").asText()).isEqualTo(photo);
+    }
+
+    @Test
+    void partnerSignupRejectsInvalidGender() throws Exception {
+        JsonNode error = expect(performPost("/api/auth/partner/otp/signup/start", Map.of(
+                "name", "Bad Gender",
+                "phone", "+919999000031",
+                "gender", "ALIEN")), 400);
+        assertThat(error.get("message").asText()).contains("valid gender");
+    }
+
+    @Test
+    void customerPhoneCanAlsoRegisterAsPartner() throws Exception {        String phone = "+919999000015";
         registerCustomer(phone, "Customer First");
 
         // Customer sign-in still resolves to the customer account.

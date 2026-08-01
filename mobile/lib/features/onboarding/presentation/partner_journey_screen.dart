@@ -6,6 +6,8 @@ import '../../../core/api_client.dart';
 import '../../../core/brand_theme.dart';
 import '../../../core/document_picker.dart';
 import '../../../core/text_to_speech.dart';
+import '../../../shared/widgets/onboarding_bottom_bar.dart';
+import '../../../shared/widgets/onboarding_step_card.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../dashboard/data/partner_repository.dart';
 import '../../dashboard/presentation/partner_dashboard_screen.dart';
@@ -51,7 +53,8 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
   String? _busyAction;
   int _selectedOnboardingTab = 0;
 
-  late final PartnerRepository _partnerRepository = PartnerRepository(widget.api);
+  late final PartnerRepository _partnerRepository =
+      PartnerRepository(widget.api);
 
   @override
   void initState() {
@@ -282,8 +285,8 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
 
   Future<void> _setAvailable() async {
     await _run('available', () async {
-      final profile =
-          await _partnerRepository.setAvailability(widget.session.token, 'AVAILABLE');
+      final profile = await _partnerRepository.setAvailability(
+          widget.session.token, 'AVAILABLE');
       if (mounted) {
         setState(() => _profile = profile);
         _showMessage('You are now available for jobs.');
@@ -373,58 +376,114 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
                   length: 5,
                   initialIndex: _selectedOnboardingTab,
                   child: SafeArea(
-                    child: Scrollbar(
-                      controller: _onboardingScrollController,
-                      thumbVisibility: true,
-                      child: ListView(
-                        controller: _onboardingScrollController,
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 56),
-                        children: [
-                          Text(
-                            'Welcome, ${widget.session.name}',
-                            style: const TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            'Complete identity, address and payout verification to start receiving jobs.',
-                            style: TextStyle(color: BrandColors.muted),
-                          ),
-                          const SizedBox(height: 16),
-                          Container(
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color:
-                                    BrandColors.muted.withValues(alpha: 0.35),
+                    child: _showOnboardingFooter
+                        ? Column(
+                            children: [
+                              Expanded(
+                                child: _buildOnboardingScrollArea(),
                               ),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: TabBar(
-                              isScrollable: true,
-                              tabAlignment: TabAlignment.start,
-                              dividerColor: Colors.transparent,
-                              onTap: (index) => setState(
-                                  () => _selectedOnboardingTab = index),
-                              tabs: const [
-                                Tab(text: 'Overview'),
-                                Tab(text: 'Identity'),
-                                Tab(text: 'Address'),
-                                Tab(text: 'Payout'),
-                                Tab(text: 'Status'),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-                          _buildSelectedOnboardingTab(),
-                        ],
-                      ),
-                    ),
+                              OnboardingBottomBar(
+                                child: _buildOnboardingFooter(),
+                              ),
+                            ],
+                          )
+                        : _buildOnboardingScrollArea(),
                   ),
                 ),
     );
+  }
+
+  /// Whether the current tab pins its submit actions to the bottom bar.
+  bool get _showOnboardingFooter =>
+      _selectedOnboardingTab == 1 ||
+      _selectedOnboardingTab == 2 ||
+      _selectedOnboardingTab == 3;
+
+  Widget _buildOnboardingScrollArea() {
+    return Scrollbar(
+      controller: _onboardingScrollController,
+      thumbVisibility: true,
+      child: ListView(
+        controller: _onboardingScrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+        children: [
+          Text(
+            'Welcome, ${widget.session.name}',
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Complete identity, address and payout verification to start receiving jobs.',
+            style: TextStyle(color: BrandColors.muted),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: BrandColors.muted.withValues(alpha: 0.35),
+              ),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: TabBar(
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              dividerColor: Colors.transparent,
+              onTap: (index) => setState(() => _selectedOnboardingTab = index),
+              tabs: const [
+                Tab(text: 'Overview'),
+                Tab(text: 'Identity'),
+                Tab(text: 'Address'),
+                Tab(text: 'Payout'),
+                Tab(text: 'Status'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          _buildSelectedOnboardingTab(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOnboardingFooter() {
+    switch (_selectedOnboardingTab) {
+      case 1:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            FilledButton(
+              onPressed: _isBusy('identity') ? null : _submitIdentity,
+              child: Text(_buttonLabel('identity', 'Submit identity')),
+            ),
+            const SizedBox(height: 8),
+            FilledButton(
+              onPressed: _isBusy('pan') ? null : _submitPan,
+              child: Text(_buttonLabel('pan', 'Submit PAN')),
+            ),
+            const SizedBox(height: 8),
+            FilledButton(
+              onPressed: _isBusy('photo') ? null : _submitProfilePhoto,
+              child: Text(_buttonLabel('photo', 'Submit photo')),
+            ),
+          ],
+        );
+      case 2:
+        return FilledButton(
+          onPressed: _isBusy('address') ? null : _saveAddress,
+          child: Text(_buttonLabel('address', 'Submit address and proof')),
+        );
+      case 3:
+        return FilledButton(
+          onPressed: _isBusy('payout') ? null : _savePayout,
+          child: Text(_buttonLabel('payout', 'Save payout details')),
+        );
+      default:
+        return const SizedBox.shrink();
+    }
   }
 
   Widget _buildSelectedOnboardingTab() {
@@ -508,7 +567,7 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        _OnboardingExpansionCard(
+        OnboardingStepCard(
           number: '1',
           title: 'Identity verification',
           status: _identityGroupStatus,
@@ -533,7 +592,7 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
             ),
           ],
         ),
-        _OnboardingExpansionCard(
+        OnboardingStepCard(
           number: '2',
           title: 'Address verification',
           status: _status('addressStatus'),
@@ -545,7 +604,7 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
             ),
           ],
         ),
-        _OnboardingExpansionCard(
+        OnboardingStepCard(
           number: '3',
           title: 'Payout details',
           status: _payoutStatus,
@@ -557,7 +616,7 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
             ),
           ],
         ),
-        _OnboardingExpansionCard(
+        OnboardingStepCard(
           number: '4',
           title: 'Start receiving jobs',
           status: readyForJobs ? 'READY' : 'LOCKED',
@@ -648,7 +707,7 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
       physics: const NeverScrollableScrollPhysics(),
       padding: EdgeInsets.zero,
       children: [
-        _OnboardingExpansionCard(
+        OnboardingStepCard(
           number: '1',
           title: 'Identity document',
           status: _status('identityStatus'),
@@ -667,14 +726,9 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
                 _identityDocument?.name ?? 'Choose identity document',
               ),
             ),
-            const SizedBox(height: 10),
-            FilledButton(
-              onPressed: _isBusy('identity') ? null : _submitIdentity,
-              child: Text(_buttonLabel('identity', 'Submit identity')),
-            ),
           ],
         ),
-        _OnboardingExpansionCard(
+        OnboardingStepCard(
           number: '2',
           title: 'PAN verification',
           status: _status('panStatus'),
@@ -697,14 +751,9 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
               icon: const Icon(Icons.upload_file_outlined),
               label: Text(_panDocument?.name ?? 'Choose PAN document'),
             ),
-            const SizedBox(height: 10),
-            FilledButton(
-              onPressed: _isBusy('pan') ? null : _submitPan,
-              child: Text(_buttonLabel('pan', 'Submit PAN')),
-            ),
           ],
         ),
-        _OnboardingExpansionCard(
+        OnboardingStepCard(
           number: '3',
           title: 'Selfie / profile photo',
           status: _status('selfieStatus'),
@@ -720,11 +769,6 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
               icon: const Icon(Icons.add_a_photo_outlined),
               label: Text(_profilePhoto?.name ?? 'Choose photo'),
             ),
-            const SizedBox(height: 10),
-            FilledButton(
-              onPressed: _isBusy('photo') ? null : _submitProfilePhoto,
-              child: Text(_buttonLabel('photo', 'Submit photo')),
-            ),
           ],
         ),
       ],
@@ -738,7 +782,7 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
       physics: const NeverScrollableScrollPhysics(),
       padding: EdgeInsets.zero,
       children: [
-        _OnboardingExpansionCard(
+        OnboardingStepCard(
           number: '1',
           title: 'Address verification',
           status: _status('addressStatus'),
@@ -791,11 +835,6 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
               icon: const Icon(Icons.upload_file_outlined),
               label: Text(_addressDocument?.name ?? 'Choose address proof'),
             ),
-            const SizedBox(height: 10),
-            FilledButton(
-              onPressed: _isBusy('address') ? null : _saveAddress,
-              child: Text(_buttonLabel('address', 'Submit address and proof')),
-            ),
           ],
         ),
       ],
@@ -809,7 +848,7 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
       physics: const NeverScrollableScrollPhysics(),
       padding: EdgeInsets.zero,
       children: [
-        _OnboardingExpansionCard(
+        OnboardingStepCard(
           number: '1',
           title: 'Payout details',
           status: _payoutStatus,
@@ -866,11 +905,6 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
                 keyboardType: TextInputType.emailAddress,
                 decoration: const InputDecoration(labelText: 'UPI ID'),
               ),
-            const SizedBox(height: 12),
-            FilledButton(
-              onPressed: _isBusy('payout') ? null : _savePayout,
-              child: Text(_buttonLabel('payout', 'Save payout details')),
-            ),
           ],
         ),
       ],
@@ -1362,75 +1396,6 @@ class _ApplicationMessageCard extends StatelessWidget {
   }
 }
 
-class _OnboardingExpansionCard extends StatelessWidget {
-  const _OnboardingExpansionCard({
-    required this.number,
-    required this.title,
-    required this.status,
-    required this.children,
-    this.initiallyExpanded = false,
-  });
-
-  final String number;
-  final String title;
-  final String status;
-  final List<Widget> children;
-  final bool initiallyExpanded;
-
-  @override
-  Widget build(BuildContext context) {
-    final normalized = status.toUpperCase().replaceAll('_', ' ');
-    final approved = normalized == 'APPROVED' ||
-        normalized == 'READY' ||
-        normalized == 'AVAILABLE';
-    final pending = normalized == 'PENDING';
-    final locked = normalized == 'LOCKED';
-    final statusColor = approved
-        ? BrandColors.lime
-        : pending
-            ? Colors.amber
-            : locked
-                ? BrandColors.muted
-                : Colors.orangeAccent;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
-        initiallyExpanded: initiallyExpanded,
-        tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
-        leading: CircleAvatar(
-          radius: 14,
-          backgroundColor: approved
-              ? BrandColors.lime
-              : BrandColors.muted.withValues(alpha: 0.28),
-          foregroundColor: approved
-              ? BrandColors.evergreen
-              : Theme.of(context).colorScheme.onSurface,
-          child: Text(
-            number,
-            style: const TextStyle(fontWeight: FontWeight.w800),
-          ),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.w800),
-        ),
-        subtitle: Text(
-          normalized,
-          style: TextStyle(
-            color: statusColor,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        children: children,
-      ),
-    );
-  }
-}
-
 class _PartnerConsentScreen extends StatefulWidget {
   const _PartnerConsentScreen({
     required this.partnerName,
@@ -1489,123 +1454,125 @@ class _PartnerConsentScreenState extends State<_PartnerConsentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Column(
-        children: [
-          Expanded(
-            child: Scrollbar(
+    return Column(
+      children: [
+        Expanded(
+          child: Scrollbar(
+            controller: _scrollController,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
               controller: _scrollController,
-              thumbVisibility: true,
-              child: SingleChildScrollView(
-                controller: _scrollController,
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 44),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Center(
-                      child: Icon(
-                        Icons.privacy_tip_outlined,
-                        color: BrandColors.lime,
-                        size: 48,
-                      ),
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Center(
+                    child: Icon(
+                      Icons.privacy_tip_outlined,
+                      color: BrandColors.lime,
+                      size: 48,
                     ),
-                    const SizedBox(height: 20),
-                    Text(
-                      _selectedLanguage.title(widget.partnerName),
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                      ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    _selectedLanguage.title(widget.partnerName),
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      _selectedLanguage.intro,
-                      style: TextStyle(color: BrandColors.muted, height: 1.4),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    _selectedLanguage.intro,
+                    style: TextStyle(color: BrandColors.muted, height: 1.4),
+                  ),
+                  const SizedBox(height: 18),
+                  DropdownButtonFormField<_ConsentLanguage>(
+                    initialValue: _selectedLanguage,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: _selectedLanguage.languageLabel,
+                      prefixIcon: const Icon(Icons.translate_outlined),
                     ),
-                    const SizedBox(height: 18),
-                    DropdownButtonFormField<_ConsentLanguage>(
-                      initialValue: _selectedLanguage,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        labelText: _selectedLanguage.languageLabel,
-                        prefixIcon: const Icon(Icons.translate_outlined),
-                      ),
-                      items: _consentLanguages
-                          .map(
-                            (language) => DropdownMenuItem<_ConsentLanguage>(
-                              value: language,
-                              child: Text(language.name),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (language) {
-                        if (language == null) return;
-                        _speechResetTimer?.cancel();
-                        AppTextToSpeech.stop();
-                        setState(() {
-                          _selectedLanguage = language;
-                          _speaking = false;
-                        });
-                      },
+                    items: _consentLanguages
+                        .map(
+                          (language) => DropdownMenuItem<_ConsentLanguage>(
+                            value: language,
+                            child: Text(language.name),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (language) {
+                      if (language == null) return;
+                      _speechResetTimer?.cancel();
+                      AppTextToSpeech.stop();
+                      setState(() {
+                        _selectedLanguage = language;
+                        _speaking = false;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _listen,
+                    icon: Icon(
+                      _speaking
+                          ? Icons.stop_circle_outlined
+                          : Icons.volume_up_outlined,
                     ),
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: _listen,
-                      icon: Icon(
-                        _speaking
-                            ? Icons.stop_circle_outlined
-                            : Icons.volume_up_outlined,
-                      ),
-                      label: Text(
-                        _speaking
-                            ? _selectedLanguage.stopAudioLabel
-                            : _selectedLanguage.listenLabel,
-                      ),
+                    label: Text(
+                      _speaking
+                          ? _selectedLanguage.stopAudioLabel
+                          : _selectedLanguage.listenLabel,
                     ),
-                    const SizedBox(height: 28),
-                    _ConsentPoint(
-                      icon: Icons.badge_outlined,
-                      title: _selectedLanguage.identityTitle,
-                      body: _selectedLanguage.identityBody,
-                    ),
-                    _ConsentPoint(
-                      icon: Icons.account_balance_outlined,
-                      title: _selectedLanguage.payoutTitle,
-                      body: _selectedLanguage.payoutBody,
-                    ),
-                    _ConsentPoint(
-                      icon: Icons.admin_panel_settings_outlined,
-                      title: _selectedLanguage.operationsTitle,
-                      body: _selectedLanguage.operationsBody,
-                    ),
-                    _ConsentPoint(
-                      icon: Icons.edit_note_outlined,
-                      title: _selectedLanguage.correctionTitle,
-                      body: _selectedLanguage.correctionBody,
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 28),
+                  _ConsentPoint(
+                    icon: Icons.manage_accounts_outlined,
+                    title: _selectedLanguage.profileTitle,
+                    body: _selectedLanguage.profileBody,
+                  ),
+                  _ConsentPoint(
+                    icon: Icons.badge_outlined,
+                    title: _selectedLanguage.identityTitle,
+                    body: _selectedLanguage.identityBody,
+                  ),
+                  _ConsentPoint(
+                    icon: Icons.account_balance_outlined,
+                    title: _selectedLanguage.payoutTitle,
+                    body: _selectedLanguage.payoutBody,
+                  ),
+                  _ConsentPoint(
+                    icon: Icons.admin_panel_settings_outlined,
+                    title: _selectedLanguage.operationsTitle,
+                    body: _selectedLanguage.operationsBody,
+                  ),
+                  _ConsentPoint(
+                    icon: Icons.edit_note_outlined,
+                    title: _selectedLanguage.correctionTitle,
+                    body: _selectedLanguage.correctionBody,
+                  ),
+                ],
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 10, 24, 18),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: widget.saving ? null : widget.onAccept,
-                icon: const Icon(Icons.check_circle_outline),
-                label: Text(
-                  widget.saving
-                      ? _selectedLanguage.savingLabel
-                      : _selectedLanguage.acceptLabel,
-                ),
+        ),
+        OnboardingBottomBar(
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: widget.saving ? null : widget.onAccept,
+              icon: const Icon(Icons.check_circle_outline),
+              label: Text(
+                widget.saving
+                    ? _selectedLanguage.savingLabel
+                    : _selectedLanguage.acceptLabel,
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -1621,6 +1588,8 @@ class _ConsentLanguage {
     required this.acceptLabel,
     required this.titlePrefix,
     required this.intro,
+    required this.profileTitle,
+    required this.profileBody,
     required this.identityTitle,
     required this.identityBody,
     required this.payoutTitle,
@@ -1641,6 +1610,8 @@ class _ConsentLanguage {
   final String acceptLabel;
   final String titlePrefix;
   final String intro;
+  final String profileTitle;
+  final String profileBody;
   final String identityTitle;
   final String identityBody;
   final String payoutTitle;
@@ -1662,6 +1633,8 @@ class _ConsentLanguage {
     return [
       title(partnerName),
       intro,
+      profileTitle,
+      profileBody,
       identityTitle,
       identityBody,
       payoutTitle,
@@ -1692,6 +1665,9 @@ const List<_ConsentLanguage> _consentLanguages = [
     titlePrefix: 'Before you start',
     intro:
         'Please review and accept how MaidItQuick will use your information for Partner onboarding.',
+    profileTitle: 'Profile details',
+    profileBody:
+        'We ask for your name, gender, date of birth and profile photo to personalise services, verify eligibility and keep you and our customers safe.',
     identityTitle: 'Identity and safety review',
     identityBody:
         'We collect identity documents, PAN, selfie and address proof only to review Partner eligibility.',
@@ -1716,6 +1692,9 @@ const List<_ConsentLanguage> _consentLanguages = [
     titlePrefix: 'शुरू करने से पहले',
     intro:
         'कृपया पढ़ें और स्वीकार करें कि MaidItQuick पार्टनर ऑनबोर्डिंग के लिए आपकी जानकारी का उपयोग कैसे करेगा।',
+    profileTitle: 'प्रोफ़ाइल विवरण',
+    profileBody:
+        'हम सेवाओं को निजीकृत करने, पात्रता सत्यापित करने और आपकी तथा हमारे ग्राहकों की सुरक्षा के लिए आपका नाम, लिंग, जन्म तिथि और प्रोफ़ाइल फोटो मांगते हैं।',
     identityTitle: 'पहचान और सुरक्षा समीक्षा',
     identityBody:
         'हम पार्टनर पात्रता की समीक्षा के लिए ही पहचान दस्तावेज़, PAN, सेल्फी और पते का प्रमाण लेते हैं।',
@@ -1740,6 +1719,9 @@ const List<_ConsentLanguage> _consentLanguages = [
     titlePrefix: 'सुरुवात करण्यापूर्वी',
     intro:
         'कृपया वाचा आणि मान्य करा की MaidItQuick पार्टनर ऑनबोर्डिंगसाठी तुमची माहिती कशी वापरेल.',
+    profileTitle: 'प्रोफाइल तपशील',
+    profileBody:
+        'सेवा वैयक्तिकृत करण्यासाठी, पात्रता सत्यापित करण्यासाठी आणि तुमची व आमच्या ग्राहकांची सुरक्षा सुनिश्चित करण्यासाठी आम्ही तुमचे नाव, लिंग, जन्मतारीख आणि प्रोफाइल फोटो विचारतो.',
     identityTitle: 'ओळख आणि सुरक्षा तपासणी',
     identityBody:
         'पार्टनर पात्रता तपासण्यासाठीच आम्ही ओळखपत्रे, PAN, सेल्फी आणि पत्त्याचा पुरावा घेतो.',
@@ -1753,7 +1735,7 @@ const List<_ConsentLanguage> _consentLanguages = [
     correctionBody:
         'तुम्ही सपोर्टद्वारे माहिती सुधारण्याची किंवा हटवण्याची विनंती करू शकता. ही विनंती ऑपरेशनल आणि कायदेशीर जतन गरजांवर अवलंबून असेल.',
     audioScript:
-        'सुरुवात करण्यापूर्वी, {partnerName}. कृपया वाचा आणि मान्य करा की मेड इट क्विक पार्टनर ऑनबोर्डिंगसाठी तुमची माहिती कशी वापरेल. ओळख आणि सुरक्षा तपासणी. पार्टनर पात्रता तपासण्यासाठीच आम्ही ओळखपत्रे, पॅन, सेल्फी आणि पत्त्याचा पुरावा घेतो. पेआउट सेटअप. मंजुरीनंतर पेआउट तपासणी आणि सेटअप करण्यासाठी आम्ही बँक किंवा यू पी आय तपशील घेतो. ऑपरेशन्स प्रवेश. मेड इट क्विक ऑपरेशन्स टीम आवश्यक तपासण्या मंजूर करू शकते, नाकारू शकते, किंवा पुन्हा सबमिट करण्यास सांगू शकते. सुधारणा किंवा हटवण्याची विनंती. तुम्ही सपोर्टद्वारे माहिती सुधारण्याची किंवा हटवण्याची विनंती करू शकता. ही विनंती ऑपरेशनल आणि कायदेशीर जतन गरजांवर अवलंबून असेल.',
+        'सुरुवात करण्यापूर्वी, {partnerName}. कृपया वाचा आणि मान्य करा की मेड इट क्विक पार्टनर ऑनबोर्डिंगसाठी तुमची माहिती कशी वापरेल. प्रोफाइल तपशील. सेवा वैयक्तिकृत करण्यासाठी, पात्रता सत्यापित करण्यासाठी आणि तुमची व आमच्या ग्राहकांची सुरक्षा सुनिश्चित करण्यासाठी आम्ही तुमचे नाव, लिंग, जन्मतारीख आणि प्रोफाइल फोटो विचारतो. ओळख आणि सुरक्षा तपासणी. पार्टनर पात्रता तपासण्यासाठीच आम्ही ओळखपत्रे, पॅन, सेल्फी आणि पत्त्याचा पुरावा घेतो. पेआउट सेटअप. मंजुरीनंतर पेआउट तपासणी आणि सेटअप करण्यासाठी आम्ही बँक किंवा यू पी आय तपशील घेतो. ऑपरेशन्स प्रवेश. मेड इट क्विक ऑपरेशन्स टीम आवश्यक तपासण्या मंजूर करू शकते, नाकारू शकते, किंवा पुन्हा सबमिट करण्यास सांगू शकते. सुधारणा किंवा हटवण्याची विनंती. तुम्ही सपोर्टद्वारे माहिती सुधारण्याची किंवा हटवण्याची विनंती करू शकता. ही विनंती ऑपरेशनल आणि कायदेशीर जतन गरजांवर अवलंबून असेल.',
   ),
   _ConsentLanguage(
     name: 'বাংলা',
@@ -1765,7 +1747,10 @@ const List<_ConsentLanguage> _consentLanguages = [
     acceptLabel: 'আমি সম্মত এবং এগিয়ে যেতে চাই',
     titlePrefix: 'শুরু করার আগে',
     intro:
-        'MaidItQuick পার্টনার অনবোর্ডিংয়ের জন্য আপনার তথ্য কীভাবে ব্যবহার করবে, অনুগ্রহ করে তা পড়ে সম্মতি দিন।',
+        'MaidItQuick পার্টনার অনবোর্ডিংয়ের জন্য আপনার তথ্য কীভাবে ব্যবহার করবে, অনুগ্রহ করে তা পড়ে সম্মতি দিন।',
+    profileTitle: 'প্রোফাইল বিবরণ',
+    profileBody:
+        'সেবা ব্যক্তিগতকরণ, যোগ্যতা যাচাই এবং আপনার ও আমাদের গ্রাহকদের নিরাপত্তা নিশ্চিত করতে আমরা আপনার নাম, লিঙ্গ, জন্ম তারিখ এবং প্রোফাইল ছবি চাই।',
     identityTitle: 'পরিচয় এবং নিরাপত্তা যাচাই',
     identityBody:
         'পার্টনার যোগ্যতা যাচাই করার জন্যই আমরা পরিচয়পত্র, PAN, সেলফি এবং ঠিকানার প্রমাণ সংগ্রহ করি।',
@@ -1778,6 +1763,8 @@ const List<_ConsentLanguage> _consentLanguages = [
     correctionTitle: 'সংশোধন এবং মুছে ফেলার অনুরোধ',
     correctionBody:
         'আপনি সাপোর্টের মাধ্যমে সংশোধন বা মুছে ফেলার অনুরোধ করতে পারেন; এটি অপারেশনাল এবং আইনি সংরক্ষণ প্রয়োজনের উপর নির্ভর করবে।',
+    audioScript:
+        'शुरु करार आगे, {partnerName}. मेड इट कुइक पार्टनर अनबोर्डिंगर जन्य आपनार तथ्य किभाबे बाबोहार करबे, अनुग्रह करे ता पोरे सम्मति दिन. प्रोफाइल बिबरन. सेवा ब्यक्तिगतकरण, जोग्गोता जाचाई एबं आपनार ओ आमादेर ग्राहकदेर निरापोत्ता निश्चित करते आम्रा आपनार नाम, लिंगो, जन्म तारिख एबं प्रोफाइल छबि चाई. परिचय एबं निरापोत्ता जाचाई. पार्टनर जोग्गोता जाचाई करार जन्योई आम्रा परिचयपत्र, पैन, सेल्फी एबं ठिकानार प्रमाण संग्रह करि. पेआउट सेटआप. अनुमोदनेर पोरे पेआउट जाचाई ओ सेटआप करार जन्य आम्रा ब्यांक बा यू पी आय तथ्य संग्रह करि. ऑपरेशन्स एक्सेस. मेड इट कुइक ऑपरेशन्स रिव्यूयारा प्रयोजनीय जाचाई अनुमोदन, प्रत्याख्यान बा पुनराय जमा दिते बोलते पारेन. संशोधन एबं मुचे फेलार अनुरोध. आपनि सपोर्टेर माध्यमे संशोधन बा मुचे फेलार अनुरोध करते पारेन; एटि ऑपरेशनल एबं आइनि संरक्षण प्रयोजनेर उपर निर्भर करबे.',
   ),
 ];
 
@@ -1842,4 +1829,3 @@ class _PartnerStatusCard extends StatelessWidget {
     );
   }
 }
-

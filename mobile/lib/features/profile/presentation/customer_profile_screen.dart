@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../core/api_client.dart';
 import '../../../core/brand_theme.dart';
 import '../../../shared/services/profile_photo_picker.dart';
+import '../../../shared/widgets/onboarding_bottom_bar.dart';
+import '../../../shared/widgets/onboarding_step_card.dart';
 import '../../../shared/widgets/profile_avatar.dart';
 import '../../auth/data/auth_repository.dart';
 import '../data/customer_profile_repository.dart';
@@ -41,7 +43,6 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
     ('MALE', 'Male'),
     ('FEMALE', 'Female'),
     ('OTHER', 'Other'),
-    ('PREFER_NOT_TO_SAY', 'Prefer not to say'),
   ];
 
   @override
@@ -50,12 +51,12 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
     final profile = widget.initialProfile;
     _name = TextEditingController(text: profile?.name ?? '');
     _email = TextEditingController(text: profile?.email ?? '');
-    _phoneDisplay = TextEditingController(text: _formatPhone(profile?.phone ?? ''));
+    _phoneDisplay =
+        TextEditingController(text: _formatPhone(profile?.phone ?? ''));
     _dob = _parseDob(profile?.dob ?? '');
     _gender = profile?.gender.isEmpty ?? true ? null : profile!.gender;
-    _profileImage = (profile?.profileImage.isEmpty ?? true)
-        ? null
-        : profile!.profileImage;
+    _profileImage =
+        (profile?.profileImage.isEmpty ?? true) ? null : profile!.profileImage;
   }
 
   @override
@@ -166,132 +167,147 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
         automaticallyImplyLeading: !widget.requiredSetup,
         title: Text(title),
       ),
-      body: SafeArea(
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(24),
-            children: [
-              Icon(Icons.person_outline,
-                  size: 46, color: theme.colorScheme.primary),
-              const SizedBox(height: 18),
-              Text(
-                title,
-                style: theme.textTheme.headlineSmall
-                    ?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                widget.requiredSetup
-                    ? 'Complete your profile before you book.'
-                    : 'Keep your details up to date.',
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: context.brandMuted),
-              ),
-              const SizedBox(height: 28),
-              Center(
-                child: Stack(
-                  children: [
-                    ProfileAvatar(
-                      initials: _initials,
-                      photoDataUri: _profileImage,
-                      radius: 44,
-                    ),
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: Material(
-                        color: theme.colorScheme.primary,
-                        shape: const CircleBorder(),
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: _submitting ? null : _pickPhoto,
-                          child: Padding(
-                            padding: const EdgeInsets.all(8),
-                            child: Icon(Icons.photo_camera_outlined,
-                                size: 18, color: theme.colorScheme.onPrimary),
-                          ),
+      body: Form(
+        key: _formKey,
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                        fontSize: 28, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    widget.requiredSetup
+                        ? 'Complete your profile before you book.'
+                        : 'Keep your details up to date.',
+                    style:
+                        const TextStyle(color: BrandColors.muted, height: 1.4),
+                  ),
+                  const SizedBox(height: 16),
+                  OnboardingStepCard(
+                    number: '1',
+                    title: 'Profile details',
+                    status: widget.requiredSetup ? 'REQUIRED' : 'IN PROGRESS',
+                    initiallyExpanded: true,
+                    children: [
+                      Center(
+                        child: Stack(
+                          children: [
+                            ProfileAvatar(
+                              initials: _initials,
+                              photoDataUri: _profileImage,
+                              radius: 44,
+                            ),
+                            Positioned(
+                              right: 0,
+                              bottom: 0,
+                              child: Material(
+                                color: theme.colorScheme.primary,
+                                shape: const CircleBorder(),
+                                child: InkWell(
+                                  customBorder: const CircleBorder(),
+                                  onTap: _submitting ? null : _pickPhoto,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(8),
+                                    child: Icon(Icons.photo_camera_outlined,
+                                        size: 18,
+                                        color: theme.colorScheme.onPrimary),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 6),
-              Center(
-                child: TextButton(
-                  onPressed: _submitting ? null : _pickPhoto,
-                  child: const Text('Change photo'),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: _name,
-                autocorrect: false,
-                enableSuggestions: false,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(
-                  labelText: 'Full name',
-                  prefixIcon: Icon(Icons.badge_outlined),
-                ),
-                validator: (value) => value == null || value.trim().isEmpty
-                    ? 'Enter your full name'
-                    : null,
-              ),
-              const SizedBox(height: 14),
-              TextFormField(
-                readOnly: true,
-                controller: _phoneDisplay,
-                decoration: const InputDecoration(
-                  labelText: 'Mobile number',
-                  prefixIcon: Icon(Icons.phone_outlined),
-                  helperText: 'Verified during sign in',
-                ),
-              ),
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: _email,
-                keyboardType: TextInputType.emailAddress,
-                autocorrect: false,
-                enableSuggestions: false,
-                decoration: const InputDecoration(
-                  labelText: 'Email (optional)',
-                  prefixIcon: Icon(Icons.email_outlined),
-                ),
-                validator: (value) {
-                  final email = value?.trim() ?? '';
-                  if (email.isEmpty) return null;
-                  return email.contains('@') ? null : 'Enter a valid email address';
-                },
-              ),
-              const SizedBox(height: 14),
-              DropdownButtonFormField<String>(
-                initialValue: _gender,
-                decoration: const InputDecoration(
-                  labelText: 'Gender (optional)',
-                  prefixIcon: Icon(Icons.wc_outlined),
-                ),
-                items: [
-                  const DropdownMenuItem<String>(
-                      value: null, child: Text('Prefer not to say')),
-                  ..._genderOptions.map(
-                    (option) => DropdownMenuItem<String>(
-                      value: option.$1,
-                      child: Text(option.$2),
-                    ),
+                      const SizedBox(height: 6),
+                      Center(
+                        child: TextButton(
+                          onPressed: _submitting ? null : _pickPhoto,
+                          child: const Text('Change photo'),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: _name,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                          labelText: 'Full name',
+                          prefixIcon: Icon(Icons.badge_outlined),
+                        ),
+                        validator: (value) =>
+                            value == null || value.trim().isEmpty
+                                ? 'Enter your full name'
+                                : null,
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        readOnly: true,
+                        controller: _phoneDisplay,
+                        decoration: const InputDecoration(
+                          labelText: 'Mobile number',
+                          prefixIcon: Icon(Icons.phone_outlined),
+                          helperText: 'Verified during sign in',
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _email,
+                        keyboardType: TextInputType.emailAddress,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        decoration: const InputDecoration(
+                          labelText: 'Email (optional)',
+                          prefixIcon: Icon(Icons.email_outlined),
+                        ),
+                        validator: (value) {
+                          final email = value?.trim() ?? '';
+                          if (email.isEmpty) return null;
+                          return email.contains('@')
+                              ? null
+                              : 'Enter a valid email address';
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      DropdownButtonFormField<String>(
+                        initialValue: _gender,
+                        decoration: const InputDecoration(
+                          labelText: 'Gender',
+                          prefixIcon: Icon(Icons.wc_outlined),
+                        ),
+                        items: _genderOptions
+                            .map(
+                              (option) => DropdownMenuItem<String>(
+                                value: option.$1,
+                                child: Text(option.$2),
+                              ),
+                            )
+                            .toList(),
+                        validator: (value) =>
+                            value == null ? 'Select your gender' : null,
+                        onChanged: _submitting
+                            ? null
+                            : (value) => setState(() => _gender = value),
+                      ),
+                      const SizedBox(height: 14),
+                      OutlinedButton.icon(
+                        onPressed: _submitting ? null : _pickDob,
+                        icon: const Icon(Icons.cake_outlined),
+                        label: Text(_dobLabel()),
+                      ),
+                    ],
                   ),
                 ],
-                onChanged:
-                    _submitting ? null : (value) => setState(() => _gender = value),
               ),
-              const SizedBox(height: 14),
-              OutlinedButton.icon(
-                onPressed: _submitting ? null : _pickDob,
-                icon: const Icon(Icons.cake_outlined),
-                label: Text(_dobLabel()),
-              ),
-              const SizedBox(height: 24),
-              FilledButton(
+            ),
+            OnboardingBottomBar(
+              child: FilledButton(
                 onPressed: _submitting ? null : _save,
                 child: _submitting
                     ? const SizedBox(
@@ -301,8 +317,8 @@ class _CustomerProfileScreenState extends State<CustomerProfileScreen> {
                             strokeWidth: 2, color: BrandColors.evergreen))
                     : Text(widget.requiredSetup ? 'Save and continue' : 'Save'),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

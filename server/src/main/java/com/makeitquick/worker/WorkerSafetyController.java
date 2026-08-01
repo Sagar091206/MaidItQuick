@@ -275,6 +275,9 @@ public class WorkerSafetyController {
         view.put("name", profile.getUser().getName());
         view.put("email", profile.getUser().getEmail());
         view.put("phone", profile.getUser().getPhone());
+        view.put("gender", profile.getUser().getGender());
+        view.put("dob", profile.getUser().getDob() == null ? "" : profile.getUser().getDob().toString());
+        view.put("profileImage", profile.getUser().getProfileImage());
         view.put("consentAccepted", profile.isConsentAccepted());
         view.put("consentAcceptedAt", profile.getConsentAcceptedAt());
         view.put("kycStatus", profile.getKycStatus());

@@ -1,12 +1,15 @@
 package com.makeitquick.security;
 
-import jakarta.persistence.*; import java.time.Instant;
+import jakarta.persistence.*; import java.time.Instant; import java.time.LocalDate;
 
 @Entity @Table(name="partner_otps")
 class PartnerOtp {
  @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
  @Column(nullable=false) private String phone;
  private String name;
+ private String gender;
+ private LocalDate dob;
+ @Lob private String profileImage;
  @Enumerated(EnumType.STRING) @Column(nullable=false, columnDefinition="varchar(50)") private PartnerOtpPurpose purpose;
  @Column(nullable=false) private String otpHash;
  @Column(nullable=false) private Instant expiresAt;
@@ -15,7 +18,9 @@ class PartnerOtp {
  @Column(nullable=false,updatable=false) private Instant createdAt=Instant.now();
  protected PartnerOtp(){}
  PartnerOtp(String ph,String n,PartnerOtpPurpose p,String h,Instant e){phone=ph;name=n;purpose=p;otpHash=h;expiresAt=e;}
- public String getPhone(){return phone;} public String getName(){return name;} public PartnerOtpPurpose getPurpose(){return purpose;} public String getOtpHash(){return otpHash;} public int getAttempts(){return attempts;}
+ PartnerOtp(String ph,String n,String g,LocalDate d,String img,PartnerOtpPurpose p,String h,Instant e){phone=ph;name=n;gender=g;dob=d;profileImage=img;purpose=p;otpHash=h;expiresAt=e;}
+ public String getPhone(){return phone;} public String getName(){return name;} public String getGender(){return gender;} public LocalDate getDob(){return dob;} public String getProfileImage(){return profileImage==null?"":profileImage;}
+ public PartnerOtpPurpose getPurpose(){return purpose;} public String getOtpHash(){return otpHash;} public int getAttempts(){return attempts;}
  public boolean valid(){return !consumed&&expiresAt.isAfter(Instant.now())&&attempts<5;}
  public void attempt(){attempts++;}
  public void consume(){consumed=true;}
