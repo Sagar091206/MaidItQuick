@@ -3,8 +3,7 @@ package com.makeitquick.support;
 import com.makeitquick.notification.NotificationService;
 import com.makeitquick.notification.NotificationType;
 import com.makeitquick.security.Role;
-import com.makeitquick.security.Session;
-import com.makeitquick.security.SessionRepository;
+import com.makeitquick.security.SessionResolver;
 import com.makeitquick.security.UserAccount;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -26,12 +25,12 @@ import org.springframework.web.server.ResponseStatusException;
 @CrossOrigin(origins = "*")
 public class SupportController {
     private final SupportTicketRepository tickets;
-    private final SessionRepository sessions;
+    private final SessionResolver resolver;
     private final NotificationService notifications;
 
-    SupportController(SupportTicketRepository tickets, SessionRepository sessions, NotificationService notifications) {
+    SupportController(SupportTicketRepository tickets, SessionResolver resolver, NotificationService notifications) {
         this.tickets = tickets;
-        this.sessions = sessions;
+        this.resolver = resolver;
         this.notifications = notifications;
     }
 
@@ -79,8 +78,7 @@ public class SupportController {
     }
 
     private UserAccount requireUser(String authorization) {
-        String token = authorization == null ? "" : authorization.replaceFirst("(?i)^Bearer\\s+", "");
-        return sessions.findByToken(token).filter(Session::valid).map(Session::getUser)
+        return resolver.fromBearer(authorization)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Please sign in"));
     }
     private void requireAdmin(String authorization) {

@@ -1,8 +1,7 @@
 package com.makeitquick.catalog;
 
 import com.makeitquick.security.Role;
-import com.makeitquick.security.Session;
-import com.makeitquick.security.SessionRepository;
+import com.makeitquick.security.SessionResolver;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -14,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -21,15 +21,20 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/services")
 public class CatalogController {
     private final ServiceItemRepository services;
-    private final SessionRepository sessions;
+    private final SessionResolver resolver;
 
-    CatalogController(ServiceItemRepository services, SessionRepository sessions) {
+    CatalogController(ServiceItemRepository services, SessionResolver resolver) {
         this.services = services;
-        this.sessions = sessions;
+        this.resolver = resolver;
     }
 
     @GetMapping
-    public List<ServiceItem> list() { return services.findByEnabledTrueOrderByNameAsc(); }
+    public List<ServiceItem> list(@RequestParam(required = false) String q) {
+        if (q != null && !q.isBlank()) {
+            return services.findByEnabledTrueAndNameContainingIgnoreCaseOrderByNameAsc(q.trim());
+        }
+        return services.findByEnabledTrueOrderByNameAsc();
+    }
 
     @GetMapping("/admin")
     public List<ServiceItem> listForAdmin(@RequestHeader(value = "Authorization", required = false) String authorization) {
@@ -59,8 +64,7 @@ public class CatalogController {
     }
 
     private void requireAdmin(String authorization) {
-        String token = authorization == null ? "" : authorization.replaceFirst("(?i)^Bearer\\s+", "");
-        Role role = sessions.findByToken(token).filter(Session::valid).map(session -> session.getUser().getRole())
+        Role role = resolver.fromBearer(authorization).map(user -> user.getRole())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Please sign in"));
         if (role != Role.ADMIN) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin access required");
     }

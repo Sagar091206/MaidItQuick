@@ -6,13 +6,21 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration
 class CatalogBootstrap {
+    private static final String[][] PRD_SERVICES = {
+            {"Bathroom Cleaning", "799"},
+            {"Kitchen Cleaning", "899"},
+            {"Bedroom Cleaning", "699"},
+            {"Balcony Cleaning", "599"},
+            {"Living Room Cleaning", "799"},
+    };
+
     @Bean
     CommandLineRunner seedServices(ServiceItemRepository services) {
         return args -> {
-            if (services.count() == 0) {
-                services.save(new ServiceItem("Home cleaning", 14900));
-                services.save(new ServiceItem("Dishwashing", 9900));
-                services.save(new ServiceItem("Laundry & ironing", 11900));
+            for (String[] entry : PRD_SERVICES) {
+                String name = entry[0];
+                int pricePaise = Integer.parseInt(entry[1]) * 100;
+                services.findByNameIgnoreCase(name).orElseGet(() -> services.save(new ServiceItem(name, pricePaise)));
             }
         };
     }

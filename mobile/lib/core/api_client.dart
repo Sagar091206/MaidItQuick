@@ -37,6 +37,28 @@ class ApiClient {
     return _decode(response, 'POST', url);
   }
 
+  Future<dynamic> put(
+    String path,
+    Map<String, dynamic> body, {
+    String? token,
+  }) async {
+    final url = _url(path);
+    _logRequest('PUT', url);
+    final response = await _client.put(
+      url,
+      headers: _headers(token),
+      body: jsonEncode(body),
+    );
+    return _decode(response, 'PUT', url);
+  }
+
+  Future<dynamic> delete(String path, {String? token}) async {
+    final url = _url(path);
+    _logRequest('DELETE', url);
+    final response = await _client.delete(url, headers: _headers(token));
+    return _decode(response, 'DELETE', url);
+  }
+
   Future<dynamic> multipartPost(
     String path, {
     required String token,
