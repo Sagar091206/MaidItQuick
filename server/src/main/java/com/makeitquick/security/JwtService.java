@@ -15,6 +15,7 @@ import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Issues and validates the signed JWTs returned by the unified customer auth
@@ -80,6 +81,7 @@ public class JwtService {
     }
 
     @Scheduled(fixedRate = 3_600_000)
+    @Transactional
     public void purgeRevoked() {
         revokedTokens.deleteByExpiresAtBefore(Instant.now());
     }

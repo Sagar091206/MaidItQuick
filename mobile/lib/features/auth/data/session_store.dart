@@ -41,7 +41,7 @@ class SessionStore {
     final prefs = await SharedPreferences.getInstance();
     return Session(
       token: token,
-      role: prefs.getString(_roleKey) ?? 'CUSTOMER',
+      role: canonicalRole(prefs.getString(_roleKey)),
       name: prefs.getString(_nameKey) ?? '',
     );
   }
@@ -53,7 +53,7 @@ class SessionStore {
       // The session cannot be restored later, but signing in still works.
     }
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_roleKey, session.role);
+    await prefs.setString(_roleKey, canonicalRole(session.role));
     await prefs.setString(_nameKey, session.name);
   }
 

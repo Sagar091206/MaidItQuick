@@ -3,6 +3,7 @@ import com.makeitquick.security.UserAccount; import jakarta.persistence.*; impor
 @Entity @Table(name="bookings")
 public class Booking {
  @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
+ @Version private long version;
  @ManyToOne(optional=false) private UserAccount customer; @ManyToOne private UserAccount worker;
  @Column(nullable=false) private String service; @Column(nullable=false) private String address; @Column(nullable=false) private String scheduledFor; private String pinCode;
  private Integer durationMinutes=60; private String optionLabel; private String promoCode; private Integer discountPaise=0; @Column(length=1000) private String specialInstructions;

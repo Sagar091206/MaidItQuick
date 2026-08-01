@@ -5,8 +5,15 @@ import jakarta.validation.constraints.*;
 import java.security.SecureRandom;
 import java.time.*;
 import java.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -14,6 +21,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/auth")
 @CrossOrigin(origins = "*")
 public class AuthController {
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
     private static final Duration DEFAULT_SESSION = Duration.ofHours(24);
 
     private final AuthService auth;
@@ -26,6 +34,15 @@ public class AuthController {
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
     private final SecureRandom random = new SecureRandom();
 
+    @Value("${app.sms.enabled:false}")
+    private boolean smsEnabled;
+
+    private final ObjectProvider<JavaMailSender> mailSender;
+    @Value("${app.mail.enabled:false}")
+    private boolean mailEnabled;
+    @Value("${app.mail.from:no-reply@maiditquick.local}")
+    private String mailFrom;
+
     AuthController(
             AuthService auth,
             UserRepository u,
@@ -33,7 +50,8 @@ public class AuthController {
             ResetTokenRepository r,
             PartnerOtpRepository o,
             SessionResolver resolver,
-            JwtService jwt) {
+            JwtService jwt,
+            ObjectProvider<JavaMailSender> mailSender) {
         this.auth = auth;
         users = u;
         sessions = s;
@@ -41,6 +59,7 @@ public class AuthController {
         partnerOtps = o;
         this.resolver = resolver;
         this.jwt = jwt;
+        this.mailSender = mailSender;
     }
 
     @PostMapping("/register")
@@ -53,6 +72,11 @@ public class AuthController {
         Role role = Role.valueOf(x.role().toUpperCase());
         if (role == Role.ADMIN) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin accounts are created by the operator");
+        }
+        if (role == Role.WORKER) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Partner accounts are created through phone OTP onboarding. Use the partner sign-up flow instead.");
         }
         users.save(new UserAccount(x.name(), email, encoder.encode(x.password()), role));
         return Map.of("message", "Account created");
@@ -99,6 +123,7 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
+    @Transactional
     public Map<String, String> logout(
             @RequestHeader(value = "Authorization", required = false) String authorization) {
         String token = bearerToken(authorization);
@@ -159,10 +184,30 @@ public class AuthController {
     }
 
     @PostMapping("/forgot-password")
-    public Map<String, String> forgot(@Valid @RequestBody EmailRequest x) {
-        users.findByEmailIgnoreCase(x.email())
-                .ifPresent(u -> resets.save(new ResetToken(token(), u, Instant.now().plus(Duration.ofMinutes(30)))));
-        return Map.of("message", "If the account exists, a reset email has been queued.");
+    public Map<String, Object> forgot(@Valid @RequestBody EmailRequest x) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", "If the account exists, a reset email has been queued.");
+        users.findByEmailIgnoreCase(x.email()).ifPresent(u -> {
+            ResetToken reset = resets.save(new ResetToken(token(), u, Instant.now().plus(Duration.ofMinutes(30))));
+            if (mailEnabled && mailSender.getIfAvailable() != null
+                    && u.getEmail() != null && !u.getEmail().isBlank()) {
+                try {
+                    SimpleMailMessage email = new SimpleMailMessage();
+                    email.setFrom(mailFrom);
+                    email.setTo(u.getEmail());
+                    email.setSubject("MaidItQuick password reset");
+                    email.setText("Use this link to reset your MaidItQuick password: "
+                            + "http://localhost:8080/reset-password?token=" + reset.getToken());
+                    mailSender.getIfAvailable().send(email);
+                } catch (RuntimeException ignored) {
+                    log.warn("Failed to send reset email for {}", maskEmail(u.getEmail()));
+                }
+            } else {
+                log.info("Password reset token for {}: {}", maskEmail(u.getEmail()), reset.getToken());
+                response.put("devResetToken", reset.getToken());
+            }
+        });
+        return response;
     }
 
     @PostMapping("/reset-password")
@@ -197,7 +242,12 @@ public class AuthController {
         String otp = String.format("%06d", random.nextInt(1_000_000));
         partnerOtps.save(new PartnerOtp(
                 phone, name, purpose, encoder.encode(otp), Instant.now().plus(Duration.ofMinutes(10))));
-        return Map.of("message", "OTP sent", "phone", phone, "expiresInSeconds", 600, "devOtp", otp);
+        Map<String, Object> response = new HashMap<>(Map.of(
+                "message", "OTP sent", "phone", phone, "expiresInSeconds", 600));
+        if (!smsEnabled) {
+            response.put("devOtp", otp);
+        }
+        return response;
     }
 
     private UserAccount createPartner(PartnerOtp challenge) {
@@ -211,6 +261,13 @@ public class AuthController {
         UserAccount user = new UserAccount(challenge.getName(), "", encoder.encode(token()), phone, Role.WORKER);
         user.setEmailNotifications(false);
         return users.save(user);
+    }
+
+    private static String maskEmail(String email) {
+        if (email == null || email.isBlank()) return "unknown";
+        int at = email.indexOf('@');
+        if (at <= 1) return "***" + email.substring(at);
+        return email.substring(0, 1) + "***" + email.substring(at);
     }
 
     private String normalizePhone(String raw) {
