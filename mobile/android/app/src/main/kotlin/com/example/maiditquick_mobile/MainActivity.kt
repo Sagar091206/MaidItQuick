@@ -5,14 +5,19 @@ import android.content.Intent
 import android.database.Cursor
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.speech.tts.TextToSpeech
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.util.Locale
 
 class MainActivity : FlutterActivity() {
     private val channelName = "maiditquick/kyc_document_picker"
+    private val textToSpeechChannelName = "maiditquick/text_to_speech"
     private val pickDocumentRequestCode = 43102
     private var pendingResult: MethodChannel.Result? = null
+    private var textToSpeech: TextToSpeech? = null
+    private var pendingSpeech: Pair<String, String>? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -20,6 +25,21 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "pickDocument" -> openDocumentPicker(result)
+                    else -> result.notImplemented()
+                }
+            }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, textToSpeechChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "speak" -> {
+                        val text = call.argument<String>("text")?.trim().orEmpty()
+                        val languageCode = call.argument<String>("languageCode") ?: "en-IN"
+                        speak(text, languageCode, result)
+                    }
+                    "stop" -> {
+                        textToSpeech?.stop()
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -75,5 +95,50 @@ class MainActivity : FlutterActivity() {
             if (nameIndex >= 0 && it.moveToFirst()) name = it.getString(nameIndex)
         }
         return name
+    }
+
+    private fun speak(text: String, languageCode: String, result: MethodChannel.Result) {
+        if (text.isBlank()) {
+            result.error("INVALID_TEXT", "There is no consent text to play.", null)
+            return
+        }
+        val engine = textToSpeech
+        if (engine == null) {
+            pendingSpeech = text to languageCode
+            textToSpeech = TextToSpeech(this) { status ->
+                if (status == TextToSpeech.SUCCESS) {
+                    pendingSpeech?.let { (pendingText, pendingLanguage) ->
+                        speakNow(pendingText, pendingLanguage)
+                    }
+                }
+                pendingSpeech = null
+            }
+            result.success(null)
+            return
+        }
+        speakNow(text, languageCode)
+        result.success(null)
+    }
+
+    private fun speakNow(text: String, languageCode: String) {
+        val engine = textToSpeech ?: return
+        var locale = Locale.forLanguageTag(languageCode)
+        val availability = engine.isLanguageAvailable(locale)
+        if (availability == TextToSpeech.LANG_MISSING_DATA || availability == TextToSpeech.LANG_NOT_SUPPORTED) {
+            locale = when {
+                languageCode.startsWith("mr") -> Locale.forLanguageTag("hi-IN")
+                languageCode.startsWith("bn") -> Locale.forLanguageTag("hi-IN")
+                else -> Locale.forLanguageTag("en-IN")
+            }
+        }
+        engine.language = locale
+        engine.stop()
+        engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "consent-audio")
+    }
+
+    override fun onDestroy() {
+        textToSpeech?.stop()
+        textToSpeech?.shutdown()
+        super.onDestroy()
     }
 }
