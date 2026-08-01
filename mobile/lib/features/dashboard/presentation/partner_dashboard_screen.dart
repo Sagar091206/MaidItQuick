@@ -52,7 +52,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
 
     try {
       final result = await widget.api.get(
-        '/api/workers/me',
+        '/workers/me',
         token: widget.session.token,
       );
 
@@ -93,7 +93,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
 
     try {
       final result = await widget.api.post(
-        '/api/workers/me/availability',
+        '/workers/me/availability',
         {'status': online ? 'AVAILABLE' : 'OFFLINE'},
         token: widget.session.token,
       );
@@ -2781,7 +2781,7 @@ class _IncomingBookingRequestScreenState
 
     try {
       await widget.api.post(
-        '/api/bookings/$_bookingId/accept',
+        '/bookings/$_bookingId/accept',
         const <String, dynamic>{},
         token: widget.session.token,
       );
@@ -2832,7 +2832,7 @@ class _IncomingBookingRequestScreenState
 
     try {
       await widget.api.post(
-        '/api/bookings/$_bookingId/reject',
+        '/bookings/$_bookingId/reject',
         {
           if (reason.trim().isNotEmpty) 'reason': reason.trim(),
         },
@@ -3194,7 +3194,7 @@ class _AcceptedBookingDetailsScreenState
 
     try {
       final result = await widget.api.get(
-        '/api/bookings/${widget.bookingId}',
+        '/bookings/${widget.bookingId}',
         token: widget.session.token,
       );
 
@@ -3315,7 +3315,7 @@ class _AcceptedBookingDetailsScreenState
 
     try {
       final result = await widget.api.post(
-        '/api/bookings/${widget.bookingId}/contact-token',
+        '/bookings/${widget.bookingId}/contact-token',
         const <String, dynamic>{},
         token: widget.session.token,
       );
@@ -3378,7 +3378,7 @@ class _AcceptedBookingDetailsScreenState
 
     try {
       await widget.api.post(
-        '/api/bookings/${widget.bookingId}/cancel',
+        '/bookings/${widget.bookingId}/cancel',
         {
           if (request.reason.trim().isNotEmpty) 'reason': request.reason.trim(),
         },
