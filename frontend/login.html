@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in — MaidItQuick Admin</title>
+  <link rel="icon" type="image/svg+xml" href="assets/icons/favicon.svg">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/components.css">
+</head>
+<body class="login-body">
+  <div class="app-bg"></div>
+
+  <div class="login-wrap">
+    <div class="login-logo">
+      <div class="logo">
+        <svg width="34" height="34" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+          <path d="M24 8c-8 0-14.5 5.8-14.5 13 0 5.2 3.4 9.7 8.5 11.9V36c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2v-3.1c5.1-2.2 8.5-6.7 8.5-11.9 0-7.2-6.5-13-14.5-13z" fill="#fff" opacity="0.95"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand">MaidItQuick</div>
+        <div class="tag">Admin Management System</div>
+      </div>
+    </div>
+
+    <form class="card login-card" id="login-form" novalidate>
+      <h1>Welcome back</h1>
+      <p class="sub">Sign in to manage your maid services platform.</p>
+
+      <div class="login-err hidden" id="login-error"></div>
+
+      <div class="field">
+        <label class="req" for="email">Email address</label>
+        <input class="input" type="email" id="email" name="email" placeholder="admin@maiditquick.com"
+               autocomplete="email" required autofocus>
+        <div class="field-error hidden" id="email-err"></div>
+      </div>
+
+      <div class="field">
+        <label class="req" for="password">Password</label>
+        <div class="input-wrap">
+          <input class="input" type="password" id="password" name="password" placeholder="Min. 8 characters"
+                 autocomplete="current-password" required minlength="8">
+          <button type="button" class="pw-toggle" id="pw-toggle" aria-label="Show password" tabindex="-1">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path id="pw-eye" d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/>
+              <circle id="pw-pupil" cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+        <div class="field-error hidden" id="pass-err"></div>
+      </div>
+
+      <div class="login-options">
+        <label class="check">
+          <input type="checkbox" id="remember" name="remember">
+          Remember me
+        </label>
+        <a class="forgot" href="forgot-password.html" title="Request a password reset link">Forgot password?</a>
+      </div>
+
+      <button type="submit" class="btn btn-primary" id="login-btn" style="width:100%;padding:12px">
+        <span id="login-btn-label">Sign in</span>
+      </button>
+    </form>
+
+    <div class="login-hint">
+      <strong>Demo credentials</strong><br>
+      Email <code>a.k.bharati019@gmail.com</code> &nbsp;·&nbsp; Password <code>123456789101</code>
+    </div>
+
+    <div class="login-foot">© 2026 MaidItQuick · Enterprise Admin Dashboard</div>
+  </div>
+
+  <script type="module" src="js/login.js"></script>
+</body>
+</html>
