@@ -1,36 +1,46 @@
-# Secrets and local configuration
+# Flutter
+.tooling/
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/.pub-cache/
+mobile/build/
+mobile/coverage/
+mobile/android/.gradle/
+mobile/android/.kotlin/
+mobile/android/local.properties
+mobile/android/app/debug/
+mobile/android/app/profile/
+mobile/android/app/release/
+mobile/ios/Pods/
+mobile/.idea/
+
+# Java / Maven
+server/target/
+server/.mvn/wrapper/maven-wrapper.jar
+*.class
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Environment and secrets
 .env
 .env.*
 !.env.example
 *.pem
 *.key
+application-local.yml
+application-local.properties
 
-# Logs and runtime data
-*.log
+# Uploads
 server/uploads/
-server/target/
+uploads/
 
-# Flutter/Dart generated files
-.tooling/
-mobile/.dart_tool/
-mobile/.flutter-plugins-dependencies
-mobile/.pub-cache/
-mobile/build/
-mobile/coverage/
-
-# Android/Gradle generated or machine-specific files
-mobile/android/.gradle/
-mobile/android/.kotlin/
-mobile/android/local.properties
-mobile/android/*.iml
-mobile/android/app/debug/
-mobile/android/app/profile/
-mobile/android/app/release/
-
-# IDE and OS files
-.idea/
-.vscode/
-*.iml
+# Operating system
 .DS_Store
 Thumbs.db
 
