@@ -1,0 +1,1 @@
+CALL LOG 14:22 operator notes: customer agreed to partial refund

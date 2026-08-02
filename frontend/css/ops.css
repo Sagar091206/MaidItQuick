@@ -1,0 +1,286 @@
+/* ============================================================
+   MaidItQuick Admin — ops.css
+   Partner KYC, Customer verification, Live operations (map +
+   live feed), Bookings ledger advanced filters.
+   ============================================================ */
+
+/* ---------- Segmented filter tabs ---------- */
+.seg-tabs {
+  display: inline-flex;
+  background: var(--surface-strong, #f1f3f7);
+  border-radius: 12px;
+  padding: 4px;
+  gap: 4px;
+}
+.seg-tabs button {
+  border: 0;
+  background: transparent;
+  color: var(--text-2, #64748b);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 9px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: all 0.15s ease;
+}
+.seg-tabs button:hover { color: var(--text-1, #0f172a); }
+.seg-tabs button.active {
+  background: var(--surface, #ffffff);
+  color: var(--primary, #22c55e);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
+}
+.seg-tabs .count {
+  background: var(--surface-strong, #e2e8f0);
+  border-radius: 20px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.seg-tabs button.active .count { background: var(--primary-soft, #eef2ff); color: var(--primary, #4f46e5); }
+.seg-tabs button.danger.active { color: var(--danger, #dc2626); }
+.seg-tabs button.danger.active .count { background: var(--danger-soft, #fee2e2); color: var(--danger, #dc2626); }
+
+/* ---------- KYC document previews ---------- */
+.doc-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+@media (max-width: 720px) { .doc-grid { grid-template-columns: 1fr; } }
+.doc-box {
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface-2, #ffffff);
+}
+.doc-box .doc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-2, #64748b);
+  border-bottom: 1px solid var(--line, #e2e8f0);
+  background: var(--surface-strong, #f8fafc);
+}
+.doc-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  background: repeating-conic-gradient(var(--surface-strong) 0% 25%, var(--surface) 0% 50%) 50% / 18px 18px;
+  padding: 12px;
+}
+.doc-preview img {
+  max-width: 100%;
+  max-height: 240px;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.16);
+  cursor: zoom-in;
+}
+.doc-empty {
+  color: var(--text-3, #94a3b8);
+  font-size: 13px;
+  text-align: center;
+  padding: 34px 10px;
+}
+.doc-upload {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-top: 1px dashed var(--line, #e2e8f0);
+}
+.doc-upload input[type="file"] { font-size: 12px; flex: 1; min-width: 0; }
+.doc-upload label { font-size: 12px; font-weight: 600; color: var(--text-2, #64748b); }
+
+/* ---------- Detail grids (bank details etc.) ---------- */
+.kv-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+}
+@media (max-width: 560px) { .kv-grid { grid-template-columns: 1fr; } }
+.kv-grid .kv span { display: block; font-size: 11px; font-weight: 700; color: var(--text-3, #94a3b8); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 3px; }
+.kv-grid .kv strong { font-size: 14px; color: var(--text-1, #0f172a); }
+.kv-grid .kv .mono { font-family: "SFMono-Regular", Consolas, monospace; }
+
+/* ---------- Live operations layout ---------- */
+.live-layout {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1100px) { .live-layout { grid-template-columns: 1fr; } }
+#live-map {
+  width: 100%;
+  height: 560px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--line, #e2e8f0);
+  background: #e8edf3;
+  z-index: 0;
+}
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--text-2, #64748b);
+}
+.map-legend .lg { display: inline-flex; align-items: center; gap: 6px; }
+.map-pin { width: 12px; height: 12px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); display: inline-block; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+.map-pin.green { background: #16a34a; }
+.map-pin.blue { background: #2563eb; }
+.map-pin.red { background: #dc2626; }
+
+/* ---------- Live feed ---------- */
+.feed-list { display: flex; flex-direction: column; gap: 10px; max-height: 560px; overflow: auto; padding-right: 4px; }
+.feed-card {
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--surface-2, #ffffff);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.feed-card:hover { box-shadow: 0 6px 18px rgba(15, 23, 42, 0.10); transform: translateY(-1px); }
+.feed-card .f-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.feed-card .f-top .f-title { font-weight: 700; font-size: 13.5px; color: var(--text-1, #0f172a); }
+.feed-card .f-addr { font-size: 12px; color: var(--text-3, #94a3b8); margin-bottom: 8px; }
+.feed-card .f-people { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-2, #64748b); margin-bottom: 8px; gap: 8px; }
+.timer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary, #4f46e5);
+  background: var(--primary-soft, #eef2ff);
+  padding: 3px 9px;
+  border-radius: 20px;
+}
+
+/* Stage tracker */
+.stage-track { display: flex; align-items: center; gap: 0; }
+.stage-step {
+  flex: 1;
+  text-align: center;
+  position: relative;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-3, #94a3b8);
+  padding-top: 22px;
+}
+.stage-step::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--surface-strong, #e2e8f0);
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px var(--line, #e2e8f0);
+  z-index: 1;
+}
+.stage-step::after {
+  content: "";
+  position: absolute;
+  top: 13px;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--surface-strong, #e2e8f0);
+}
+.stage-step:last-child::after { display: none; }
+.stage-step.done { color: var(--success, #16a34a); }
+.stage-step.done::before { background: var(--success, #16a34a); box-shadow: 0 0 0 1px var(--success, #16a34a); }
+.stage-step.done::after { background: var(--success, #16a34a); }
+.stage-step.current { color: var(--primary, #4f46e5); }
+.stage-step.current::before { background: var(--primary, #4f46e5); box-shadow: 0 0 0 1px var(--primary, #4f46e5); }
+.stage-step.current::after { background: var(--success, #16a34a); }
+
+/* ---------- Ledger filters ---------- */
+.filter-bar {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+@media (max-width: 1100px) { .filter-bar { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 640px) { .filter-bar { grid-template-columns: 1fr 1fr; } }
+.filter-bar .field { margin: 0; }
+.filter-bar label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3, #94a3b8);
+  margin-bottom: 5px;
+}
+.filter-bar .input,
+.filter-bar .select { width: 100%; }
+.filter-bar .filter-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.filter-bar .filter-actions .btn { white-space: nowrap; }
+
+/* ---------- Ledger summary chips ---------- */
+.chip-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line, #e2e8f0);
+  background: var(--surface-2, #ffffff);
+  min-width: 150px;
+}
+.chip .c-label { font-size: 11px; font-weight: 700; color: var(--text-3, #94a3b8); text-transform: uppercase; letter-spacing: 0.07em; }
+.chip .c-value { font-size: 17px; font-weight: 800; color: var(--text-1, #0f172a); }
+.chip .c-value.green { color: var(--success, #16a34a); }
+.chip .c-value.purple { color: var(--primary, #4f46e5); }
+.chip .c-value.red { color: var(--danger, #dc2626); }
+
+/* ---------- Escalation modal ---------- */
+.emergency-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--danger-soft, #fee2e2);
+  color: var(--danger, #dc2626);
+  font-weight: 700;
+  font-size: 13px;
+  margin-top: 14px;
+}
+.emergency-box svg { flex-shrink: 0; }
+.big-timer {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--primary, #4f46e5);
+  text-align: center;
+  padding: 6px 0 12px;
+}
+
+/* ---------- Leaflet overrides ---------- */
+.leaflet-container { font-family: inherit; }
+.leaflet-popup-content { margin: 10px 14px; }
+.leaflet-popup-content .lp-title { font-weight: 700; font-size: 13px; }
+.leaflet-popup-content .lp-sub { font-size: 11.5px; color: #64748b; }

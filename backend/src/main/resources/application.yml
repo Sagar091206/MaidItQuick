@@ -1,0 +1,60 @@
+server:
+  port: 8083
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: maiditquick-admin-api
+
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/maiditquick?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:1234}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:false}
+          starttls:
+            enable: ${MAIL_STARTTLS:false}
+          ssl:
+            enable: ${MAIL_SSL:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:mySuperSecretKeyThatIsAtLeast32CharactersLong123}
+    access-minutes: 15
+    refresh-days: 7
+
+  cors-origin: ${CORS_ORIGIN:http://localhost:5173}
+  cookie-secure: false
+  uploads-dir: ${UPLOADS_DIR:uploads}
+
+  mail:
+    reset-url: ${RESET_URL:https://localhost:5173}
+
+  bootstrap:
+    email: ${ADMIN_BOOTSTRAP_EMAIL:a.k.bharati019@gmail.com}
+    password: ${ADMIN_BOOTSTRAP_PASSWORD:123456789101}
+    support-email: ${SUPPORT_BOOTSTRAP_EMAIL:support@maiditquick.com}
+    support-password: ${SUPPORT_BOOTSTRAP_PASSWORD:123456789101}
