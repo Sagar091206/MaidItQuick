@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/brand_theme.dart';
+import '../../../shared/widgets/app_states.dart';
 import '../../auth/data/auth_repository.dart';
 import '../data/booking_repository.dart';
 import 'booking_details_screen.dart';
@@ -187,18 +188,25 @@ class _BookingTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'MIQ-${booking.id}',
-                      style: const TextStyle(
-                          fontSize: 17, fontWeight: FontWeight.w800),
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'MIQ-${booking.id}',
+                          style: const TextStyle(
+                              fontSize: 17, fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                      if (booking.needsPayment) ...[
+                        StatusPill(
+                          status: 'Payment pending',
+                          color: theme.colorScheme.tertiary,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      _StatusPill(status: booking.status),
+                    ],
                   ),
-                  _StatusPill(status: booking.status),
-                ],
-              ),
               const SizedBox(height: 10),
               Text(
                 booking.service,

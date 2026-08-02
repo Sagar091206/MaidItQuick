@@ -2,9 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/brand_theme.dart';
+import '../../../shared/widgets/app_states.dart';
 import '../../auth/data/auth_repository.dart';
+import '../../booking/data/service_catalog_repository.dart';
+import '../../booking/presentation/booking_details_screen.dart';
+import '../../services/presentation/service_details_screen.dart';
 import '../data/customer_dashboard_repository.dart';
 
+/// Premium home dashboard for the signed-in customer.
+///
+/// Renders the greeting, default service address (with a switcher), the
+/// service catalog grouped by category chips, an active-booking hero card
+/// when one exists, and full loading / empty / error / offline states.
 class MvpHomeScreen extends StatefulWidget {
   const MvpHomeScreen({
     super.key,
@@ -32,7 +41,10 @@ class _MvpHomeScreenState extends State<MvpHomeScreen> {
   final _search = TextEditingController();
   CustomerDashboard? _dashboard;
   bool _loading = true;
+  bool _offline = false;
   String? _error;
+  String _category = 'All';
+  bool _switchingAddress = false;
 
   @override
   void initState() {
@@ -49,18 +61,39 @@ class _MvpHomeScreenState extends State<MvpHomeScreen> {
   }
 
   Future<void> _loadDashboard() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (_dashboard == null) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    } else {
+      setState(() => _offline = false);
+    }
     try {
       final dashboard = await _repository.fetch(widget.session.token);
-      if (mounted) setState(() => _dashboard = dashboard);
+      if (mounted) {
+        setState(() {
+          _dashboard = dashboard;
+          _error = null;
+          _offline = false;
+        });
+      }
     } on ApiException catch (error) {
-      if (mounted) setState(() => _error = error.message);
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        widget.onLogout();
+        return;
+      }
+      if (mounted) {
+        setState(() {
+          if (_dashboard == null) _error = error.message;
+        });
+      }
     } catch (_) {
       if (mounted) {
-        setState(() => _error = 'Could not load your dashboard.');
+        setState(() {
+          _offline = true;
+          if (_dashboard == null) _error = 'Could not reach MaidItQuick.';
+        });
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -72,14 +105,121 @@ class _MvpHomeScreenState extends State<MvpHomeScreen> {
     if (mounted) await _loadDashboard();
   }
 
+  Future<void> _openServiceDetails(ServiceCategory service) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (context) => ServiceDetailsScreen(
+          api: widget.api,
+          session: widget.session,
+          serviceId: service.id,
+          initialService: CatalogService(
+            id: service.id,
+            name: service.name,
+            pricePaise: service.pricePaise,
+            enabled: true,
+            emoji: service.emoji,
+            description: service.description,
+            defaultDurationMinutes: service.defaultDurationMinutes,
+          ),
+          onLogout: widget.onLogout,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openTrackBooking(DashboardBooking booking) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (context) => BookingDetailsScreen(
+          api: widget.api,
+          session: widget.session,
+          bookingId: booking.id,
+        ),
+      ),
+    );
+    if (mounted) await _loadDashboard();
+  }
+
+  /// Lets the customer pick another saved address as the default one.
+  Future<void> _changeAddress() async {
+    final dashboard = _dashboard;
+    if (dashboard == null || dashboard.addresses.isEmpty) {
+      await _openBookingFlow();
+      return;
+    }
+    final picked = await showModalBottomSheet<DashboardAddress>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => _AddressSwitcherSheet(
+        addresses: dashboard.addresses,
+        selected: dashboard.defaultAddress,
+      ),
+    );
+    if (picked == null || !mounted) return;
+    final current = dashboard.defaultAddress;
+    if (current != null && current.id == picked.id) return;
+    setState(() => _switchingAddress = true);
+    try {
+      final saved =
+          await _repository.setDefaultAddress(widget.session.token, picked.id);
+      if (!mounted) return;
+      setState(() {
+        final updated = _dashboard;
+        if (updated != null) {
+          _dashboard = CustomerDashboard(
+            welcomeName: updated.welcomeName,
+            addresses: updated.addresses
+                .map((a) => a.id == saved.id ? saved : a)
+                .toList(),
+            services: updated.services,
+            activeBooking: updated.activeBooking,
+            recentBooking: updated.recentBooking,
+          );
+        }
+      });
+    } on ApiException catch (error) {
+      _showMessage(error.message);
+    } finally {
+      if (mounted) setState(() => _switchingAddress = false);
+    }
+  }
+
+  void _showMessage(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
   List<ServiceCategory> get _filteredServices {
     final dashboard = _dashboard;
     if (dashboard == null) return const [];
     final query = _search.text.trim().toLowerCase();
-    if (query.isEmpty) return dashboard.services;
-    return dashboard.services
-        .where((service) => service.name.toLowerCase().contains(query))
-        .toList();
+    return dashboard.services.where((service) {
+      final matchesQuery =
+          query.isEmpty || service.name.toLowerCase().contains(query);
+      final matchesCategory =
+          _category == 'All' || categoryOf(service) == _category;
+      return matchesQuery && matchesCategory;
+    }).toList();
+  }
+
+  /// Category chips are derived from the first word of each service name
+  /// (e.g. "Bathroom Cleaning" -> "Bathroom").
+  List<String> get _categories {
+    final dashboard = _dashboard;
+    if (dashboard == null) return const ['All'];
+    final seen = <String>{};
+    for (final service in dashboard.services) {
+      seen.add(categoryOf(service));
+    }
+    return ['All', ...seen];
+  }
+
+  static String categoryOf(ServiceCategory service) {
+    final first = service.name.trim().split(RegExp(r'\s+')).first;
+    if (first.isEmpty) return 'Other';
+    return '${first[0].toUpperCase()}${first.substring(1)}';
   }
 
   @override
@@ -101,20 +241,39 @@ class _MvpHomeScreenState extends State<MvpHomeScreen> {
         ],
       ),
       body: SafeArea(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-                ? _DashboardError(message: _error!, onRetry: _loadDashboard)
-                : RefreshIndicator(
-                    onRefresh: _loadDashboard,
-                    child: _DashboardBody(
-                      dashboard: _dashboard!,
-                      search: _search,
-                      services: _filteredServices,
-                      onBookService: _openBookingFlow,
-                      onOpenBookings: widget.onOpenBookings,
-                    ),
+        child: _loading && _dashboard == null
+            ? const SkeletonListView(itemCount: 5)
+            : Column(
+                children: [
+                  if (_offline)
+                    OfflineBanner(
+                        onRetry:
+                            _dashboard == null ? _loadDashboard : null),
+                  Expanded(
+                    child: _error != null && _dashboard == null
+                        ? ErrorStateView(
+                            message: _error!, onRetry: _loadDashboard)
+                        : RefreshIndicator(
+                            onRefresh: _loadDashboard,
+                            child: _DashboardBody(
+                              dashboard: _dashboard!,
+                              search: _search,
+                              categories: _categories,
+                              category: _category,
+                              services: _filteredServices,
+                              switchingAddress: _switchingAddress,
+                              onCategorySelected: (category) =>
+                                  setState(() => _category = category),
+                              onBookService: _openBookingFlow,
+                              onChangeAddress: _changeAddress,
+                              onOpenServiceDetails: _openServiceDetails,
+                              onTrackBooking: _openTrackBooking,
+                              onOpenBookings: widget.onOpenBookings,
+                            ),
+                          ),
                   ),
+                ],
+              ),
       ),
     );
   }
@@ -124,23 +283,36 @@ class _DashboardBody extends StatelessWidget {
   const _DashboardBody({
     required this.dashboard,
     required this.search,
+    required this.categories,
+    required this.category,
     required this.services,
+    required this.switchingAddress,
+    required this.onCategorySelected,
     required this.onBookService,
+    required this.onChangeAddress,
+    required this.onOpenServiceDetails,
+    required this.onTrackBooking,
     required this.onOpenBookings,
   });
 
   final CustomerDashboard dashboard;
   final TextEditingController search;
+  final List<String> categories;
+  final String category;
   final List<ServiceCategory> services;
+  final bool switchingAddress;
+  final ValueChanged<String> onCategorySelected;
   final VoidCallback onBookService;
+  final VoidCallback onChangeAddress;
+  final ValueChanged<ServiceCategory> onOpenServiceDetails;
+  final ValueChanged<DashboardBooking> onTrackBooking;
   final VoidCallback onOpenBookings;
 
   @override
   Widget build(BuildContext context) {
     final name =
         dashboard.welcomeName.trim().isEmpty ? 'there' : dashboard.welcomeName;
-    final textScale = MediaQuery.textScalerOf(context).scale(1);
-    final addressCardHeight = 132.0 * (textScale < 1 ? 1 : textScale);
+    final defaultAddress = dashboard.defaultAddress;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
       children: [
@@ -160,31 +332,37 @@ class _DashboardBody extends StatelessWidget {
           label: const Text('Book a service'),
         ),
         const SizedBox(height: 22),
-        _SectionHeader(
-          title: 'Saved addresses',
-          actionLabel: dashboard.addresses.isEmpty ? 'Add address' : 'Manage',
-          onAction: onBookService,
-        ),
+        const SectionHeader(title: 'Service address'),
         const SizedBox(height: 10),
-        if (dashboard.addresses.isEmpty)
-          _EmptyState(
+        if (defaultAddress == null)
+          EmptyStateView(
             icon: Icons.location_off_outlined,
-            title: 'No saved addresses yet',
-            body: 'Add one before booking a cleaning service.',
+            title: 'No saved address yet',
+            message: 'Add your service address to start booking.',
+            actionLabel: 'Add address',
+            onAction: onChangeAddress,
           )
         else
-          SizedBox(
-            height: addressCardHeight,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: dashboard.addresses.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (context, index) =>
-                  _AddressCard(address: dashboard.addresses[index]),
-            ),
+          _DefaultAddressCard(
+            address: defaultAddress,
+            busy: switchingAddress,
+            onChange: onChangeAddress,
           ),
         const SizedBox(height: 24),
-        _SectionHeader(title: 'Services'),
+        if (dashboard.activeBooking != null) ...[
+          SectionHeader(
+            title: 'Active booking',
+            actionLabel: 'View history',
+            onAction: onOpenBookings,
+          ),
+          const SizedBox(height: 10),
+          _ActiveBookingHero(
+            booking: dashboard.activeBooking!,
+            onTrack: () => onTrackBooking(dashboard.activeBooking!),
+          ),
+          const SizedBox(height: 24),
+        ],
+        const SectionHeader(title: 'Services'),
         const SizedBox(height: 10),
         TextField(
           controller: search,
@@ -193,12 +371,34 @@ class _DashboardBody extends StatelessWidget {
             prefixIcon: Icon(Icons.search),
           ),
         ),
+        const SizedBox(height: 12),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (final item in categories) ...[
+                ChoiceChip(
+                  label: Text(item),
+                  selected: item == category,
+                  onSelected: (_) => onCategorySelected(item),
+                ),
+                if (item != categories.last) const SizedBox(width: 8),
+              ],
+            ],
+          ),
+        ),
         const SizedBox(height: 14),
         if (services.isEmpty)
-          _EmptyState(
-            icon: Icons.search_off,
-            title: 'No services found',
-            body: 'Try bathroom, kitchen, bedroom, balcony or living room.',
+          EmptyStateView(
+            icon: dashboard.services.isEmpty
+                ? Icons.cleaning_services_outlined
+                : Icons.search_off,
+            title: dashboard.services.isEmpty
+                ? 'No services available yet'
+                : 'No matching services',
+            message: dashboard.services.isEmpty
+                ? 'New cleaning services for your area are on the way.'
+                : 'Try another search or category.',
           )
         else
           GridView.builder(
@@ -213,34 +413,21 @@ class _DashboardBody extends StatelessWidget {
             ),
             itemBuilder: (context, index) => _ServiceCard(
               service: services[index],
-              onTap: onBookService,
+              onTap: () => onOpenServiceDetails(services[index]),
             ),
           ),
         const SizedBox(height: 24),
-        if (dashboard.activeBooking != null) ...[
-          _SectionHeader(
-            title: 'Active booking',
-            actionLabel: 'View history',
-            onAction: onOpenBookings,
-          ),
-          const SizedBox(height: 10),
-          _BookingCard(
-            booking: dashboard.activeBooking!,
-            highlighted: true,
-          ),
-          const SizedBox(height: 24),
-        ],
-        _SectionHeader(
+        SectionHeader(
           title: 'Recent booking',
           actionLabel: 'View history',
           onAction: onOpenBookings,
         ),
         const SizedBox(height: 10),
         if (dashboard.recentBooking == null)
-          _EmptyState(
+          const EmptyStateView(
             icon: Icons.history,
             title: 'No completed bookings yet',
-            body: 'Your latest completed service will appear here.',
+            message: 'Your latest completed service will appear here.',
           )
         else
           _BookingCard(booking: dashboard.recentBooking!),
@@ -249,82 +436,122 @@ class _DashboardBody extends StatelessWidget {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({
-    required this.title,
-    this.actionLabel,
-    this.onAction,
+/// Default service address card with a "Change" action that opens the
+/// address switcher bottom sheet.
+class _DefaultAddressCard extends StatelessWidget {
+  const _DefaultAddressCard({
+    required this.address,
+    required this.busy,
+    required this.onChange,
   });
 
-  final String title;
-  final String? actionLabel;
-  final VoidCallback? onAction;
+  final DashboardAddress address;
+  final bool busy;
+  final VoidCallback onChange;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            title,
-            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
-          ),
+    final scheme = context.scheme;
+    return Card(
+      color: context.brandCard,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.location_on_outlined, color: scheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    address.label,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                TextButton(
+                  onPressed: busy ? null : onChange,
+                  child: busy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Change'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              address.address,
+              style: TextStyle(
+                  color: context.brandMuted, height: 1.3),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'PIN ${address.pinCode}',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ],
         ),
-        if (actionLabel != null)
-          TextButton(onPressed: onAction, child: Text(actionLabel!)),
-      ],
+      ),
     );
   }
 }
 
-class _AddressCard extends StatelessWidget {
-  const _AddressCard({required this.address});
+/// Bottom sheet listing the saved addresses for switching the default.
+class _AddressSwitcherSheet extends StatelessWidget {
+  const _AddressSwitcherSheet({
+    required this.addresses,
+    required this.selected,
+  });
 
-  final Map<String, dynamic> address;
+  final List<DashboardAddress> addresses;
+  final DashboardAddress? selected;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 250,
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.location_on_outlined,
-                      color: BrandColors.lime, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      address['label']?.toString() ?? 'Address',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                  if (address['defaultAddress'] == true)
-                    const Icon(Icons.check_circle,
-                        color: BrandColors.lime, size: 18),
-                ],
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Text(
+              'Change service address',
+              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              'The selected address becomes your default booking address.',
+              style: TextStyle(color: BrandColors.muted, fontSize: 13),
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (final address in addresses)
+            ListTile(
+              leading: Icon(
+                address.id == selected?.id
+                    ? Icons.check_circle
+                    : Icons.location_on_outlined,
+                color: address.id == selected?.id
+                    ? Theme.of(context).colorScheme.primary
+                    : null,
               ),
-              const SizedBox(height: 8),
-              Text(
-                address['address']?.toString() ?? '',
+              title: Text(address.label),
+              subtitle: Text(
+                '${address.address}\nPIN ${address.pinCode}',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: BrandColors.muted, height: 1.25),
               ),
-              const Spacer(),
-              Text(
-                address['pinCode']?.toString() ?? '',
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
-        ),
+              onTap: () => Navigator.of(context).pop(address),
+            ),
+          const SizedBox(height: 12),
+        ],
       ),
     );
   }
@@ -336,8 +563,22 @@ class _ServiceCard extends StatelessWidget {
   final ServiceCategory service;
   final VoidCallback onTap;
 
+  static String emojiFor(String name) {
+    final n = name.toLowerCase();
+    if (n.contains('bath')) return '🛁';
+    if (n.contains('kitchen')) return '🍳';
+    if (n.contains('bed')) return '🛏️';
+    if (n.contains('balcony')) return '🪴';
+    if (n.contains('living')) return '🛋️';
+    if (n.contains('deep') || n.contains('full')) return '✨';
+    if (n.contains('dust')) return '🧹';
+    if (n.contains('window')) return '🪟';
+    return '🧽';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final scheme = context.scheme;
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(24),
@@ -347,8 +588,12 @@ class _ServiceCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.cleaning_services_outlined,
-                  color: BrandColors.lime),
+              Text(
+                service.emoji.isEmpty
+                    ? emojiFor(service.name)
+                    : service.emoji,
+                style: const TextStyle(fontSize: 34),
+              ),
               const Spacer(),
               Text(
                 service.name,
@@ -358,8 +603,10 @@ class _ServiceCard extends StatelessWidget {
                     const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 5),
-              Text(service.priceLabel,
-                  style: const TextStyle(color: BrandColors.muted)),
+              Text(
+                service.priceLabel,
+                style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w700),
+              ),
             ],
           ),
         ),
@@ -368,14 +615,63 @@ class _ServiceCard extends StatelessWidget {
   }
 }
 
-class _BookingCard extends StatelessWidget {
-  const _BookingCard({required this.booking, this.highlighted = false});
+/// Active booking hero card with a Track action.
+class _ActiveBookingHero extends StatelessWidget {
+  const _ActiveBookingHero({required this.booking, required this.onTrack});
 
   final DashboardBooking booking;
-  final bool highlighted;
+  final VoidCallback onTrack;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    return Card(
+      color: scheme.primaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.radio_button_checked, color: scheme.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    booking.service,
+                    style: const TextStyle(
+                        fontSize: 17, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                StatusPill(status: booking.status),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '${formatDateTime(booking.scheduledFor)} · ${booking.durationMinutes} min',
+              style: TextStyle(color: context.brandMuted),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: onTrack,
+              icon: const Icon(Icons.track_changes_outlined),
+              label: const Text('Track booking'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BookingCard extends StatelessWidget {
+  const _BookingCard({required this.booking});
+
+  final DashboardBooking booking;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -384,12 +680,7 @@ class _BookingCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(
-                  highlighted
-                      ? Icons.radio_button_checked
-                      : Icons.check_circle_outline,
-                  color: BrandColors.lime,
-                ),
+                Icon(Icons.check_circle_outline, color: scheme.primary),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -398,16 +689,20 @@ class _BookingCard extends StatelessWidget {
                         fontSize: 17, fontWeight: FontWeight.w800),
                   ),
                 ),
-                _StatusPill(status: booking.status),
+                StatusPill(status: booking.status),
               ],
             ),
             const SizedBox(height: 12),
-            Text(booking.service,
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            Text(
+              booking.service,
+              style:
+                  const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 6),
-            Text(booking.address,
-                style: const TextStyle(color: BrandColors.muted)),
+            Text(
+              booking.address,
+              style: TextStyle(color: context.brandMuted),
+            ),
             const SizedBox(height: 10),
             Wrap(
               spacing: 12,
@@ -434,33 +729,6 @@ class _BookingCard extends StatelessWidget {
   }
 }
 
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.status});
-
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: BrandColors.lime.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Text(
-          status.replaceAll('_', ' '),
-          style: const TextStyle(
-            color: BrandColors.lime,
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _BookingMeta extends StatelessWidget {
   const _BookingMeta({required this.icon, required this.label});
 
@@ -472,87 +740,17 @@ class _BookingMeta extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: BrandColors.muted),
+        Icon(icon, size: 16, color: context.brandMuted),
         const SizedBox(width: 5),
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 210),
           child: Text(
             label,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: BrandColors.muted, fontSize: 12),
+            style: TextStyle(color: context.brandMuted, fontSize: 12),
           ),
         ),
       ],
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({
-    required this.icon,
-    required this.title,
-    required this.body,
-  });
-
-  final IconData icon;
-  final String title;
-  final String body;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Row(
-          children: [
-            Icon(icon, color: BrandColors.lime),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: const TextStyle(fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 4),
-                  Text(body,
-                      style: const TextStyle(
-                          color: BrandColors.muted, height: 1.3)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DashboardError extends StatelessWidget {
-  const _DashboardError({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, color: BrandColors.lime, size: 42),
-            const SizedBox(height: 14),
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Try again'),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

@@ -6,8 +6,8 @@ class CustomerDashboardRepository {
   final ApiClient _api;
 
   Future<CustomerDashboard> fetch(String token) async {
-    final payload =
-        Map<String, dynamic>.from(await _api.get('/customer/dashboard', token: token) as Map);
+    final payload = Map<String, dynamic>.from(
+        await _api.get('/customer/dashboard', token: token) as Map);
     return CustomerDashboard.fromJson(payload);
   }
 
@@ -20,6 +20,13 @@ class CustomerDashboardRepository {
         .map(ServiceCategory.fromJson)
         .toList();
   }
+
+  /// Marks an address as the customer's default and returns the updated one.
+  Future<DashboardAddress> setDefaultAddress(String token, int id) async {
+    final payload = Map<String, dynamic>.from(await _api.put(
+        '/customer/addresses/$id/default', {}, token: token) as Map);
+    return DashboardAddress.fromJson(payload);
+  }
 }
 
 class CustomerDashboard {
@@ -31,10 +38,15 @@ class CustomerDashboard {
     this.recentBooking,
   });
 
-  factory CustomerDashboard.fromJson(Map<String, dynamic> json) => CustomerDashboard(
+  factory CustomerDashboard.fromJson(Map<String, dynamic> json) =>
+      CustomerDashboard(
         welcomeName: json['welcomeName'] as String? ?? '',
-        addresses: List<Map<String, dynamic>>.from(json['addresses'] as List? ?? const []),
-        services: List<Map<String, dynamic>>.from(json['services'] as List? ?? const [])
+        addresses:
+            List<Map<String, dynamic>>.from(json['addresses'] as List? ?? const [])
+                .map(DashboardAddress.fromJson)
+                .toList(),
+        services: List<Map<String, dynamic>>.from(
+                json['services'] as List? ?? const [])
             .map(ServiceCategory.fromJson)
             .toList(),
         activeBooking: json['activeBooking'] == null
@@ -48,10 +60,43 @@ class CustomerDashboard {
       );
 
   final String welcomeName;
-  final List<Map<String, dynamic>> addresses;
+  final List<DashboardAddress> addresses;
   final List<ServiceCategory> services;
   final DashboardBooking? activeBooking;
   final DashboardBooking? recentBooking;
+
+  DashboardAddress? get defaultAddress {
+    for (final address in addresses) {
+      if (address.defaultAddress) return address;
+    }
+    return addresses.isEmpty ? null : addresses.first;
+  }
+}
+
+/// A saved address as surfaced by the dashboard payload.
+class DashboardAddress {
+  const DashboardAddress({
+    required this.id,
+    required this.label,
+    required this.address,
+    required this.pinCode,
+    required this.defaultAddress,
+  });
+
+  factory DashboardAddress.fromJson(Map<String, dynamic> json) =>
+      DashboardAddress(
+        id: (json['id'] as num).toInt(),
+        label: json['label'] as String? ?? '',
+        address: json['address'] as String? ?? '',
+        pinCode: json['pinCode'] as String? ?? '',
+        defaultAddress: json['defaultAddress'] as bool? ?? false,
+      );
+
+  final int id;
+  final String label;
+  final String address;
+  final String pinCode;
+  final bool defaultAddress;
 }
 
 class ServiceCategory {
@@ -59,17 +104,28 @@ class ServiceCategory {
     required this.id,
     required this.name,
     required this.pricePaise,
+    this.emoji = '',
+    this.description = '',
+    this.defaultDurationMinutes = 60,
   });
 
-  factory ServiceCategory.fromJson(Map<String, dynamic> json) => ServiceCategory(
+  factory ServiceCategory.fromJson(Map<String, dynamic> json) =>
+      ServiceCategory(
         id: (json['id'] as num).toInt(),
         name: json['name'] as String,
         pricePaise: (json['pricePaise'] as num).toInt(),
+        emoji: json['emoji'] as String? ?? '',
+        description: json['description'] as String? ?? '',
+        defaultDurationMinutes:
+            (json['defaultDurationMinutes'] as num?)?.toInt() ?? 60,
       );
 
   final int id;
   final String name;
   final int pricePaise;
+  final String emoji;
+  final String description;
+  final int defaultDurationMinutes;
 
   String get priceLabel => 'From Rs ${(pricePaise / 100).round()}';
 }
@@ -85,7 +141,8 @@ class DashboardBooking {
     required this.worker,
   });
 
-  factory DashboardBooking.fromJson(Map<String, dynamic> json) => DashboardBooking(
+  factory DashboardBooking.fromJson(Map<String, dynamic> json) =>
+      DashboardBooking(
         id: (json['id'] as num).toInt(),
         service: json['service'] as String? ?? '',
         address: json['address'] as String? ?? '',

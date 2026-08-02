@@ -347,10 +347,15 @@ public class CustomerExperienceController {
     }
 
     private Map<String, Object> serviceView(ServiceItem service) {
-        return Map.of(
-                "id", service.getId(),
-                "name", service.getName(),
-                "pricePaise", service.getPricePaise());
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("id", service.getId());
+        view.put("name", service.getName());
+        view.put("pricePaise", service.getPricePaise());
+        view.put("description", service.getDescription());
+        view.put("emoji", service.getEmoji());
+        view.put("defaultDurationMinutes", service.getDefaultDurationMinutes());
+        view.put("enabled", service.isEnabled());
+        return view;
     }
 
     record AddressInput(
