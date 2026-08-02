@@ -1,5 +1,7 @@
 package com.makeitquick.booking;
 
+import com.makeitquick.notification.NotificationService;
+import com.makeitquick.notification.NotificationType;
 import com.makeitquick.operations.AvailabilityStatus;
 import com.makeitquick.security.UserAccount;
 import com.makeitquick.worker.WorkerProfile;
@@ -53,6 +55,26 @@ public class BookingAssignmentService {
                 .toList();
         if (candidates.isEmpty()) return Optional.empty();
         return Optional.of(candidates.get(0).getUser());
+    }
+
+    /**
+     * Assigns the best available worker and notifies both sides.
+     * Only runs while the booking is still unassigned (REQUESTED), so it can be
+     * safely triggered after payment without double-assigning.
+     */
+    public Optional<UserAccount> assignBest(Booking b, List<String> services,
+                                            NotificationService notifications) {
+        if (b.getStatus() != BookingStatus.REQUESTED) return Optional.empty();
+        Optional<UserAccount> best = findBestWorker(services, b.getPinCode());
+        if (best.isEmpty()) return Optional.empty();
+        UserAccount worker = best.get();
+        b.assign(worker);
+        bookings.save(b);
+        notifications.send(worker, NotificationType.WORKER_ASSIGNMENT, "New job assigned",
+                "You have been assigned " + b.getService() + " for " + b.getScheduledFor() + ".");
+        notifications.send(b.getCustomer(), NotificationType.BOOKING, "Worker assigned",
+                "A worker has been assigned to your " + b.getService() + " booking.");
+        return best;
     }
 
     private boolean coversServices(WorkerProfile profile, List<String> services) {

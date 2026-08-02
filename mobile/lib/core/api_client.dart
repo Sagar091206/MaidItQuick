@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -13,12 +14,15 @@ import 'api_config.dart';
 class ApiClient {
   ApiClient({http.Client? client}) : _client = client ?? http.Client();
 
+  static const _requestTimeout = Duration(seconds: 30);
+
   final http.Client _client;
 
   Future<dynamic> get(String path, {String? token}) async {
     final url = _url(path);
     _logRequest('GET', url);
-    final response = await _client.get(url, headers: _headers(token));
+    final response =
+        await _send(() => _client.get(url, headers: _headers(token)), url);
     return _decode(response, 'GET', url);
   }
 
@@ -29,10 +33,13 @@ class ApiClient {
   }) async {
     final url = _url(path);
     _logRequest('POST', url);
-    final response = await _client.post(
+    final response = await _send(
+      () => _client.post(
+        url,
+        headers: _headers(token),
+        body: jsonEncode(body),
+      ),
       url,
-      headers: _headers(token),
-      body: jsonEncode(body),
     );
     return _decode(response, 'POST', url);
   }
@@ -44,10 +51,13 @@ class ApiClient {
   }) async {
     final url = _url(path);
     _logRequest('PUT', url);
-    final response = await _client.put(
+    final response = await _send(
+      () => _client.put(
+        url,
+        headers: _headers(token),
+        body: jsonEncode(body),
+      ),
       url,
-      headers: _headers(token),
-      body: jsonEncode(body),
     );
     return _decode(response, 'PUT', url);
   }
@@ -55,7 +65,8 @@ class ApiClient {
   Future<dynamic> delete(String path, {String? token}) async {
     final url = _url(path);
     _logRequest('DELETE', url);
-    final response = await _client.delete(url, headers: _headers(token));
+    final response =
+        await _send(() => _client.delete(url, headers: _headers(token)), url);
     return _decode(response, 'DELETE', url);
   }
 
@@ -81,12 +92,27 @@ class ApiClient {
           contentType: _mediaType(mimeType),
         ),
       );
-    final streamed = await request.send();
+    final streamed = await _send(() => request.send(), url);
     final response = await http.Response.fromStream(streamed);
     return _decode(response, 'POST multipart', url);
   }
 
   Uri _url(String path) => Uri.parse('${ApiConfig.baseUrl}$path');
+
+  Future<T> _send<T extends http.BaseResponse>(
+      Future<T> Function() request, Uri url) async {
+    try {
+      return await request().timeout(_requestTimeout);
+    } on TimeoutException {
+      _logResponse('TIMEOUT', url, 408);
+      throw ApiException(
+          'The server took too long to respond. Please try again.', 408);
+    } on http.ClientException {
+      _logResponse('NETWORK', url, 0);
+      throw ApiException(
+          'Cannot reach the server. Check your connection and try again.', 0);
+    }
+  }
 
   Map<String, String> _headers(String? token) => {
         'Content-Type': 'application/json',

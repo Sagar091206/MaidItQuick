@@ -2,12 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../../core/api_client.dart';
 import '../../auth/data/auth_repository.dart';
-import '../../home/presentation/mvp_home_screen.dart';
+import '../../navigation/presentation/customer_bottom_nav.dart';
 import '../data/customer_profile_repository.dart';
-import '../../onboarding/presentation/journey_screens.dart';
 import 'customer_profile_screen.dart';
-import 'settings_screen.dart';
-import '../../booking/presentation/booking_history_screen.dart';
 
 class CustomerShell extends StatefulWidget {
   const CustomerShell({
@@ -80,37 +77,6 @@ class _CustomerShellState extends State<CustomerShell> {
     if (mounted) setState(() => _profile = profile);
   }
 
-  Future<void> _openProfileEditor() async {
-    final profile = _profile;
-    if (profile == null) return;
-    final saved = await Navigator.of(context).push<CustomerProfile>(
-      MaterialPageRoute(
-        builder: (context) => CustomerProfileScreen(
-          api: widget.api,
-          session: widget.session,
-          initialProfile: profile,
-          requiredSetup: false,
-        ),
-      ),
-    );
-    if (saved != null) await _handleProfileSaved(saved);
-  }
-
-  Future<void> _openSettings() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (context) => SettingsScreen(
-          api: widget.api,
-          session: widget.session,
-          onLogout: widget.onLogout,
-          onProfileSaved: _handleProfileSaved,
-          themeMode: widget.themeMode,
-          onThemeModeChanged: widget.onThemeModeChanged,
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -128,38 +94,15 @@ class _CustomerShellState extends State<CustomerShell> {
       );
     }
 
-    return MvpHomeScreen(
+    return CustomerBottomNav(
       api: widget.api,
       session: widget.session,
+      profile: profile,
       onLogout: widget.onLogout,
-      onOpenSettings: _openSettings,
-      onBookService: _openBookingFlow,
-      onOpenBookings: _openBookings,
-    );
-  }
-
-  Future<void> _openBookings() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (context) => BookingHistoryScreen(
-          api: widget.api,
-          session: widget.session,
-        ),
-      ),
-    );
-    if (mounted) await _loadProfile();
-  }
-
-  Future<void> _openBookingFlow() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (context) => CustomerJourneyScreen(
-          api: widget.api,
-          session: widget.session,
-          onLogout: widget.onLogout,
-          onEditProfile: _openProfileEditor,
-        ),
-      ),
+      onSessionUpdated: widget.onSessionUpdated,
+      onProfileSaved: _handleProfileSaved,
+      themeMode: widget.themeMode,
+      onThemeModeChanged: widget.onThemeModeChanged,
     );
   }
 }

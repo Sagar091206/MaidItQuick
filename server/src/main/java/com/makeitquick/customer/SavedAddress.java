@@ -1,5 +1,6 @@
 package com.makeitquick.customer;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.makeitquick.security.UserAccount;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -15,7 +16,9 @@ import java.util.stream.Stream;
 @Table(name = "saved_addresses")
 public class SavedAddress {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
-    @ManyToOne(optional = false) private UserAccount customer;
+    @ManyToOne(optional = false)
+    @JsonIgnoreProperties({"passwordHash", "enabled", "emailNotifications", "role", "profileImage"})
+    private UserAccount customer;
     @Column(nullable = false) private String label;
     @Column(nullable = false, length = 1000) private String address;
     @Column(nullable = false, length = 6) private String pinCode;

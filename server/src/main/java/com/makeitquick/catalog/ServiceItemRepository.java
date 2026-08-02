@@ -8,4 +8,6 @@ public interface ServiceItemRepository extends JpaRepository<ServiceItem, Long> 
     List<ServiceItem> findByEnabledTrueOrderByNameAsc();
     List<ServiceItem> findByEnabledTrueAndNameContainingIgnoreCaseOrderByNameAsc(String name);
     Optional<ServiceItem> findByNameIgnoreCase(String name);
+    Optional<ServiceItem> findByIdAndEnabledTrue(Long id);
+    Optional<ServiceItem> findByEnabledTrueAndNameIgnoreCase(String name);
 }

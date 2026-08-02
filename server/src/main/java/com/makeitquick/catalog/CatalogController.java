@@ -5,7 +5,9 @@ import com.makeitquick.security.SessionResolver;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,11 +31,21 @@ public class CatalogController {
     }
 
     @GetMapping
-    public List<ServiceItem> list(@RequestParam(required = false) String q) {
+    public List<Map<String, Object>> list(@RequestParam(required = false) String q) {
+        List<ServiceItem> items;
         if (q != null && !q.isBlank()) {
-            return services.findByEnabledTrueAndNameContainingIgnoreCaseOrderByNameAsc(q.trim());
+            items = services.findByEnabledTrueAndNameContainingIgnoreCaseOrderByNameAsc(q.trim());
+        } else {
+            items = services.findByEnabledTrueOrderByNameAsc();
         }
-        return services.findByEnabledTrueOrderByNameAsc();
+        return items.stream().map(this::serviceView).toList();
+    }
+
+    @GetMapping("/{id}")
+    public Map<String, Object> detail(@PathVariable Long id) {
+        ServiceItem service = services.findByIdAndEnabledTrue(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Service not found"));
+        return serviceView(service);
     }
 
     @GetMapping("/admin")
@@ -61,6 +73,19 @@ public class CatalogController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Service not found"));
         service.setEnabled(input.enabled());
         return services.save(service);
+    }
+
+    /** Customer-facing view of a catalog item (additive keys only). */
+    Map<String, Object> serviceView(ServiceItem service) {
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("id", service.getId());
+        view.put("name", service.getName());
+        view.put("pricePaise", service.getPricePaise());
+        view.put("description", service.getDescription());
+        view.put("emoji", service.getEmoji());
+        view.put("defaultDurationMinutes", service.getDefaultDurationMinutes());
+        view.put("enabled", service.isEnabled());
+        return view;
     }
 
     private void requireAdmin(String authorization) {

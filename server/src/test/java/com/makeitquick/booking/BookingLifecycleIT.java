@@ -35,8 +35,8 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 /**
  * End-to-end booking lifecycle tests against an in-memory H2 database.
  *
- * <p>Verifies the customer booking journey: creation with automatic assignment
- * to an eligible worker, worker acceptance, on-the-way, OTP-gated start and
+ * <p>Verifies the customer booking journey: creation as unpaid and unassigned,
+ * payment before assignment, worker acceptance, on-the-way, OTP-gated start and
  * completion, rating, and the cancellation and validation rules.</p>
  */
 @SpringBootTest(properties = {
@@ -85,6 +85,7 @@ class BookingLifecycleIT {
     @BeforeEach
     void cleanDatabase() {
         new org.springframework.transaction.support.TransactionTemplate(txManager).executeWithoutResult(status -> {
+            em.createQuery("delete from Payment").executeUpdate();
             em.createQuery("delete from BookingEvent").executeUpdate();
             em.createQuery("delete from BookingService").executeUpdate();
             em.createQuery("delete from Booking").executeUpdate();
@@ -100,13 +101,24 @@ class BookingLifecycleIT {
     }
 
     @Test
-    void customerBookingIsAutoAssignedToEligibleWorker() throws Exception {
+    void bookingIsUnpaidAndUnassignedUntilPayment() throws Exception {
         UserAccount customer = newCustomer("+919800000001", true);
         UserAccount worker = newEligibleWorker("+919800000002");
 
         JsonNode created = createBooking(customer, worker, futureTime());
-        assertThat(created.get("status").asText()).isEqualTo("ASSIGNED");
-        assertThat(created.get("worker").asText()).isEqualTo(worker.getName());
+        assertThat(created.get("status").asText()).isEqualTo("REQUESTED");
+        assertThat(created.get("paymentStatus").asText()).isEqualTo("UNPAID");
+        assertThat(created.get("worker").asText()).isEqualTo("Unassigned");
+        assertThat(created.get("paymentAmountPaise").asInt()).isGreaterThan(0);
+
+        // Payment first, then automatic assignment fires.
+        payFor(customer, created.get("id").asLong(), "UPI");
+
+        JsonNode paid = expect(mockMvc.perform(get("/api/bookings/" + created.get("id").asLong())
+                .header("Authorization", "Bearer " + jwt.issue(customer))), 200);
+        assertThat(paid.get("paymentStatus").asText()).isEqualTo("PAID");
+        assertThat(paid.get("status").asText()).isEqualTo("ASSIGNED");
+        assertThat(paid.get("worker").asText()).isEqualTo(worker.getName());
     }
 
     @Test
@@ -116,6 +128,7 @@ class BookingLifecycleIT {
 
         JsonNode created = createBooking(customer, worker, futureTime());
         long id = created.get("id").asLong();
+        payFor(customer, id, "UPI");
 
         // Worker accepts, but has not yet travelled.
         postWith(worker, "/api/bookings/" + id + "/accept");
@@ -131,6 +144,7 @@ class BookingLifecycleIT {
 
         JsonNode created = createBooking(customer, worker, futureTime());
         long id = created.get("id").asLong();
+        payFor(customer, id, "UPI");
 
         postWith(worker, "/api/bookings/" + id + "/accept");
         postWith(worker, "/api/bookings/" + id + "/on-the-way");
@@ -157,6 +171,7 @@ class BookingLifecycleIT {
 
         JsonNode created = createBooking(customer, worker, futureTime());
         long id = created.get("id").asLong();
+        payFor(customer, id, "UPI");
 
         postWith(worker, "/api/bookings/" + id + "/accept");
 
@@ -171,6 +186,7 @@ class BookingLifecycleIT {
 
         JsonNode created = createBooking(customer, worker, futureTime());
         long id = created.get("id").asLong();
+        payFor(customer, id, "UPI");
 
         postWith(worker, "/api/bookings/" + id + "/accept");
 
@@ -242,6 +258,16 @@ class BookingLifecycleIT {
 
     private JsonNode createBooking(UserAccount customer, UserAccount worker, String scheduledFor) throws Exception {
         return expect(postBooking(customer, worker, scheduledFor), 200);
+    }
+
+    /** Completes the mock-gateway payment for a booking (intent + pay). */
+    private void payFor(UserAccount customer, long bookingId, String method) throws Exception {
+        JsonNode intent = postWith(customer, "/api/bookings/" + bookingId + "/pay-intent",
+                Map.of("method", method));
+        postWith(customer, "/api/bookings/" + bookingId + "/pay", Map.of(
+                "intentId", intent.get("intentId").asText(),
+                "method", method,
+                "upiId", "customer@upi"));
     }
 
     private ResultActions postBooking(UserAccount customer, UserAccount worker, String scheduledFor) throws Exception {

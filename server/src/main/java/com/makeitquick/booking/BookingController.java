@@ -31,13 +31,14 @@ public class BookingController {
     private final ServiceAreaService serviceAreas;
     private final ServiceCatalogService catalog;
     private final BookingAssignmentService assigner;
+    private final BookingPricingService pricing;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
     private final SecureRandom random = new SecureRandom();
 
     BookingController(BookingRepository r, BookingServiceRepository bs, BookingEventRepository events,
                       SessionResolver resolver, UserRepository users, NotificationService n, WorkerSafetyService w,
                       RefundService refunds, ServiceAreaService areas, ServiceCatalogService catalog,
-                      BookingAssignmentService assigner) {
+                      BookingAssignmentService assigner, BookingPricingService pricing) {
         repo = r;
         bookingServices = bs;
         bookingEvents = events;
@@ -49,6 +50,7 @@ public class BookingController {
         serviceAreas = areas;
         this.catalog = catalog;
         this.assigner = assigner;
+        this.pricing = pricing;
     }
 
     private UserAccount me(String h) {
@@ -81,30 +83,28 @@ public class BookingController {
         if (x.durationMinutes() != null && (x.durationMinutes() < 30 || x.durationMinutes() > 480)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Duration must be between 30 and 480 minutes");
         }
-        int discount = promoDiscount(x.promoCode());
+        boolean hasActive = repo.findByCustomerIdOrderByIdDesc(u.getId()).stream()
+                .anyMatch(b -> EnumSet.of(
+                        BookingStatus.REQUESTED, BookingStatus.ASSIGNED, BookingStatus.ACCEPTED,
+                        BookingStatus.ON_THE_WAY, BookingStatus.ARRIVED, BookingStatus.IN_PROGRESS)
+                        .contains(b.getStatus()));
+        if (hasActive) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "You already have an active booking. Complete or cancel it before booking again.");
+        }
+        int effectiveDuration = x.durationMinutes() == null ? 60 : x.durationMinutes();
+        int amountPaise = pricing.totalPaise(requested, effectiveDuration, x.promoCode());
         String serviceLabel = String.join(", ", requested);
         Booking b = repo.save(new Booking(u, serviceLabel, x.address(), x.scheduledFor(), x.pinCode(),
-                x.durationMinutes(), x.optionLabel(), x.promoCode(), discount, x.specialInstructions()));
+                x.durationMinutes(), x.optionLabel(), x.promoCode(), pricing.discountPaise(x.promoCode()),
+                x.specialInstructions()));
+        b.setPaymentAmountPaise(amountPaise);
+        repo.save(b);
         bookingServices.saveAll(requested.stream().map(service -> new BookingService(b, service)).toList());
         recordEvent(b, BookingStatus.REQUESTED, "Booking requested by " + u.getName());
-        notifications.send(u, NotificationType.BOOKING, "Booking requested",
-                "Your " + b.getService() + " booking has been requested for " + b.getScheduledFor() + ".");
-        assignBestWorker(b, requested);
+        notifications.send(u, NotificationType.BOOKING, "Payment required",
+                "Complete the payment for your " + b.getService() + " booking so a partner can be assigned.");
         return view(b);
-    }
-
-    private void assignBestWorker(Booking b, List<String> services) {
-        if (b.getStatus() != BookingStatus.REQUESTED) return;
-        Optional<UserAccount> best = assigner.findBestWorker(services, b.getPinCode());
-        if (best.isEmpty()) return;
-        UserAccount worker = best.get();
-        b.assign(worker);
-        repo.save(b);
-        recordEvent(b, BookingStatus.ASSIGNED, "Assigned to " + worker.getName());
-        notifications.send(worker, NotificationType.WORKER_ASSIGNMENT, "New job assigned",
-                "You have been assigned " + b.getService() + " for " + b.getScheduledFor() + ".");
-        notifications.send(b.getCustomer(), NotificationType.BOOKING, "Worker assigned",
-                "A worker has been assigned to your " + b.getService() + " booking.");
     }
 
     @GetMapping
@@ -180,11 +180,13 @@ public class BookingController {
         }
         b.unassign();
         b = repo.save(b);
-        recordEvent(b, BookingStatus.REQUESTED, "Worker " + u.getName() + " declined the job");
+        Booking unassigned = b;
+        recordEvent(unassigned, BookingStatus.REQUESTED, "Worker " + u.getName() + " declined the job");
         notifications.send(b.getCustomer(), NotificationType.BOOKING, "Worker declined",
                 "Your assigned worker declined the job. We are finding another worker.");
-        assignBestWorker(b, serviceNamesOf(b));
-        return view(b);
+        assigner.assignBest(unassigned, serviceNamesOf(unassigned), notifications).ifPresent(worker ->
+                recordEvent(unassigned, BookingStatus.ASSIGNED, "Assigned to " + worker.getName()));
+        return view(unassigned);
     }
 
     @PostMapping("/{id}/cancel")
@@ -208,6 +210,8 @@ public class BookingController {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT, "Only requested, assigned or accepted bookings can be cancelled");
         }
+        // Paid bookings may still be cancelled; the refund is requested via
+        // /refund-request afterwards (MVP: no hard block).
         b.cancel(x.reason());
         b = repo.save(b);
         recordEvent(b, BookingStatus.CANCELLED, "Cancelled by " + u.getName() + ": " + x.reason());
@@ -401,17 +405,7 @@ public class BookingController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
     }
 
-    private int promoDiscount(String code) {
-        if (code == null || code.isBlank()) return 0;
-        return switch (code.toUpperCase()) {
-            case "WELCOME50" -> 5000;
-            case "MAKEITQUICK100" -> 10000;
-            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Promo code is invalid");
-        };
-    }
-
-    private List<String> serviceNames(Create x) {
-        List<String> names = x.services() == null ? List.of()
+    private List<String> serviceNames(Create x) {        List<String> names = x.services() == null ? List.of()
                 : x.services().stream().filter(Objects::nonNull).map(String::trim)
                         .filter(s -> !s.isBlank()).distinct().toList();
         if (!names.isEmpty()) return names;
@@ -434,6 +428,12 @@ public class BookingController {
         result.put("discountPaise", b.getDiscountPaise());
         result.put("specialInstructions", b.getSpecialInstructions());
         result.put("status", b.getStatus());
+        result.put("paymentStatus", b.getPaymentStatus().name());
+        result.put("paymentAmountPaise", b.getPaymentAmountPaise());
+        result.put("paymentMethod", b.getPaymentMethod());
+        result.put("paidAt", b.getPaidAt() == null ? null : b.getPaidAt().toString());
+        result.put("startOtpIssued", b.getStartOtpHash() != null);
+        result.put("endOtpIssued", b.getEndOtpHash() != null);
         result.put("customer", b.getCustomer().getName());
         result.put("worker", b.getWorker() == null ? "Unassigned" : b.getWorker().getName());
         result.put("rating", b.getRating() == null ? 0 : b.getRating());

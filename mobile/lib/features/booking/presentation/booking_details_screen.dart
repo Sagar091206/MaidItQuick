@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/brand_theme.dart';
+import '../../../shared/widgets/app_states.dart';
 import '../../auth/data/auth_repository.dart';
 import '../data/booking_repository.dart';
+import 'payment_screen.dart';
 
 class BookingDetailsScreen extends StatefulWidget {
   const BookingDetailsScreen({
@@ -23,6 +25,8 @@ class BookingDetailsScreen extends StatefulWidget {
 
 class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   late final BookingRepository _repository;
+  final _cancelReasonController = TextEditingController();
+  final _ratingController = TextEditingController();
   CustomerBooking? _booking;
   bool _loading = true;
   bool _busy = false;
@@ -33,6 +37,13 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     super.initState();
     _repository = BookingRepository(widget.api);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _cancelReasonController.dispose();
+    _ratingController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -74,13 +85,13 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   }
 
   Future<String?> _promptCancelReason() async {
-    final controller = TextEditingController();
+    _cancelReasonController.clear();
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Cancel booking?'),
         content: TextField(
-          controller: controller,
+          controller: _cancelReasonController,
           autofocus: true,
           maxLines: 3,
           decoration: const InputDecoration(
@@ -94,13 +105,12 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
             child: const Text('Keep booking'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text),
+            onPressed: () => Navigator.of(context).pop(_cancelReasonController.text),
             child: const Text('Cancel booking'),
           ),
         ],
       ),
     );
-    controller.dispose();
     return result;
   }
 
@@ -177,6 +187,21 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     return '$hour:00';
   }
 
+  Future<void> _pay() async {
+    final booking = _booking;
+    if (booking == null || !booking.needsPayment) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (context) => PaymentScreen(
+          api: widget.api,
+          session: widget.session,
+          booking: booking,
+        ),
+      ),
+    );
+    if (mounted) _load();
+  }
+
   Future<void> _rate() async {
     final booking = _booking;
     if (booking == null || !booking.canRate) return;
@@ -199,7 +224,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
 
   Future<(int, String)?> _promptRating() async {
     var stars = 5;
-    final controller = TextEditingController();
+    _ratingController.clear();
     final result = await showDialog<(int, String)>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -226,7 +251,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
               ),
               const SizedBox(height: 12),
               TextField(
-                controller: controller,
+                controller: _ratingController,
                 maxLines: 3,
                 decoration: const InputDecoration(
                   labelText: 'Comment (optional)',
@@ -242,14 +267,13 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
             ),
             FilledButton(
               onPressed: () =>
-                  Navigator.of(context).pop((stars, controller.text.trim())),
+                  Navigator.of(context).pop((stars, _ratingController.text.trim())),
               child: const Text('Submit rating'),
             ),
           ],
         ),
       ),
     );
-    controller.dispose();
     return result;
   }
 
@@ -301,6 +325,7 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                 : _DetailsBody(
                     booking: _booking!,
                     busy: _busy,
+                    onPay: _booking!.needsPayment ? _pay : null,
                     onCancel: _booking!.canCancel ? _cancel : null,
                     onReschedule: _booking!.canReschedule ? _reschedule : null,
                     onRate: _booking!.canRate ? _rate : null,
@@ -314,6 +339,7 @@ class _DetailsBody extends StatelessWidget {
   const _DetailsBody({
     required this.booking,
     required this.busy,
+    required this.onPay,
     required this.onCancel,
     required this.onReschedule,
     required this.onRate,
@@ -321,6 +347,7 @@ class _DetailsBody extends StatelessWidget {
 
   final CustomerBooking booking;
   final bool busy;
+  final VoidCallback? onPay;
   final VoidCallback? onCancel;
   final VoidCallback? onReschedule;
   final VoidCallback? onRate;
@@ -406,6 +433,27 @@ class _DetailsBody extends StatelessWidget {
             ],
           ),
         ),
+        _Section(
+          title: 'Payment',
+          icon: Icons.account_balance_wallet_outlined,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _DetailRow(
+                  label: 'Payment status',
+                  value: _paymentLabel(booking.paymentStatus)),
+              if (booking.paymentAmountPaise > 0)
+                _DetailRow(
+                    label: 'Amount',
+                    value: formatPaise(booking.paymentAmountPaise)),
+              if (booking.isPaid && booking.paymentMethod.isNotEmpty)
+                _DetailRow(label: 'Paid with', value: booking.paymentMethod),
+              if (booking.isPaid && booking.paidAt != null)
+                _DetailRow(
+                    label: 'Paid on', value: _displayDate(booking.paidAt!)),
+            ],
+          ),
+        ),
         if (booking.rating > 0)
           _Section(
             title: 'Your rating',
@@ -413,6 +461,15 @@ class _DetailsBody extends StatelessWidget {
             child: Text('${booking.rating} / 5 stars'),
           ),
         const SizedBox(height: 18),
+        if (onPay != null) ...[
+          FilledButton.icon(
+            onPressed: busy ? null : onPay,
+            icon: const Icon(Icons.lock_outline),
+            label: Text(
+                'Pay ${formatPaise(booking.paymentAmountPaise)} to proceed'),
+          ),
+          const SizedBox(height: 10),
+        ],
         if (onRate != null) ...[
           FilledButton.icon(
             onPressed: busy ? null : onRate,
@@ -593,9 +650,9 @@ class _StatusBanner extends StatelessWidget {
 String _statusHint(String status) {
   switch (status) {
     case 'REQUESTED':
-      return 'Waiting for a partner to be assigned by operations.';
+      return 'Complete the payment — a partner is assigned automatically after payment.';
     case 'ASSIGNED':
-      return 'A partner has been assigned to your booking.';
+      return 'Payment received. A partner has been assigned to your booking.';
     case 'ACCEPTED':
       return 'Your partner has accepted the job.';
     case 'ON_THE_WAY':
@@ -697,4 +754,19 @@ String _displayDate(String iso) {
   final hour = parsed.hour.toString().padLeft(2, '0');
   final minute = parsed.minute.toString().padLeft(2, '0');
   return '$day/$month/${parsed.year}, $hour:$minute';
+}
+
+String _paymentLabel(String paymentStatus) {
+  switch (paymentStatus) {
+    case 'PAID':
+      return 'Paid';
+    case 'PENDING':
+      return 'Payment processing';
+    case 'FAILED':
+      return 'Payment failed — retry';
+    case 'REFUNDED':
+      return 'Refunded';
+    default:
+      return 'Payment pending';
+  }
 }
