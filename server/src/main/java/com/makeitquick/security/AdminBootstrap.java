@@ -4,7 +4,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 /**
  * Creates the first administrator only when credentials are supplied through environment settings.
@@ -15,6 +15,7 @@ public class AdminBootstrap {
     @Bean
     CommandLineRunner createInitialAdmin(
             UserRepository users,
+            PasswordEncoder encoder,
             @Value("${app.admin.email:}") String email,
             @Value("${app.admin.password:}") String password,
             @Value("${app.admin.name:MakeItQuick Admin}") String name) {
@@ -26,7 +27,7 @@ public class AdminBootstrap {
                 throw new IllegalStateException("APP_ADMIN_PASSWORD must contain at least 12 characters");
             }
             users.save(new UserAccount(name, email.trim().toLowerCase(),
-                    new BCryptPasswordEncoder(12).encode(password), Role.ADMIN));
+                    encoder.encode(password), Role.ADMIN));
         };
     }
 }
