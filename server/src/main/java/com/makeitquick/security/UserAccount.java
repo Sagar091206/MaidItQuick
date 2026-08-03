@@ -49,6 +49,15 @@ public class UserAccount {
     @Column(nullable = false)
     private boolean enabled = true;
 
+    @Column(name = "failed_attempts", nullable = false)
+    private int failedAttempts;
+
+    @Column(name = "locked_until")
+    private Instant lockedUntil;
+
+    @Column(name = "last_login")
+    private Instant lastLogin;
+
     @Column(nullable = false)
     private boolean emailNotifications = true;
 
@@ -140,6 +149,30 @@ public class UserAccount {
 
     public void setEnabled(boolean value) {
         enabled = value;
+    }
+
+    public int getFailedAttempts() {
+        return failedAttempts;
+    }
+
+    public void setFailedAttempts(int value) {
+        failedAttempts = value;
+    }
+
+    public Instant getLockedUntil() {
+        return lockedUntil;
+    }
+
+    public void setLockedUntil(Instant value) {
+        lockedUntil = value;
+    }
+
+    public Instant getLastLogin() {
+        return lastLogin;
+    }
+
+    public void setLastLogin(Instant value) {
+        lastLogin = value;
     }
 
     public boolean isEmailNotifications() {

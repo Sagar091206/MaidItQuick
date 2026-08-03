@@ -43,15 +43,28 @@ public class JwtService {
     }
 
     public String issue(UserAccount user) {
+        return issue(user, expiry);
+    }
+
+    /**
+     * Issues a token with a caller-chosen lifetime (used by the admin realm for
+     * short-lived access tokens). Admin tokens carry the full permission
+     * catalog so {@code @PreAuthorize} checks work against the same issuer.
+     */
+    public String issue(UserAccount user, Duration ttl) {
         Instant now = Instant.now();
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .id(UUID.randomUUID().toString())
                 .subject(String.valueOf(user.getId()))
                 .claim("phone", user.getPhone())
                 .claim("name", user.getName())
-                .claim("role", user.getRole().name())
+                .claim("role", user.getRole().name());
+        if (user.getRole() == Role.ADMIN) {
+            builder.claim("permissions", AdminPermissions.ALL);
+        }
+        return builder
                 .issuedAt(Date.from(now))
-                .expiration(Date.from(now.plus(expiry)))
+                .expiration(Date.from(now.plus(ttl)))
                 .signWith(key)
                 .compact();
     }

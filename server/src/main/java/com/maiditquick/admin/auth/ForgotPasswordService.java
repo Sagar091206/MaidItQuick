@@ -1,10 +1,12 @@
 package com.maiditquick.admin.auth;
 
-import com.maiditquick.admin.admin.Admin;
-import com.maiditquick.admin.admin.AdminRepository;
+import com.makeitquick.security.ResetToken;
+import com.makeitquick.security.ResetTokenRepository;
+import com.makeitquick.security.Role;
+import com.makeitquick.security.UserAccount;
+import com.makeitquick.security.UserRepository;
 import com.maiditquick.admin.audit.AuditService;
 import com.maiditquick.admin.auth.AuthExceptions.PasswordResetMailException;
-import com.maiditquick.admin.common.HashUtil;
 import com.maiditquick.admin.common.TokenGenerator;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
@@ -24,11 +26,10 @@ import java.time.Instant;
 import java.util.Locale;
 
 /**
- * Forgot-password flow (US 1.2):
- * normalize email -> find admin (never revealing existence) -> if active,
- * generate a 64-char secure token (SHA-256 hashed at rest, 15-minute expiry),
- * invalidate older tokens, send the reset email and write an audit entry.
- * Unknown or disabled accounts still receive the generic success response.
+ * Forgot-password flow: normalize email -> find the admin account (never
+ * revealing existence) -> if active, generate a 64-char secure token, invalidate
+ * older tokens, send the reset email and write an audit entry. Unknown or
+ * disabled accounts still receive the generic success response.
  */
 @Service
 public class ForgotPasswordService {
@@ -36,21 +37,21 @@ public class ForgotPasswordService {
     private static final Logger log = LoggerFactory.getLogger(ForgotPasswordService.class);
     private static final Duration TOKEN_TTL = Duration.ofMinutes(15);
 
-    private final AdminRepository admins;
-    private final PasswordResetTokenRepository resets;
+    private final UserRepository users;
+    private final ResetTokenRepository resets;
     private final TokenGenerator tokens;
     private final JavaMailSender mail;
     private final AuditService audit;
     private final String resetUrlBase;
 
     public ForgotPasswordService(
-            AdminRepository admins,
-            PasswordResetTokenRepository resets,
+            UserRepository users,
+            ResetTokenRepository resets,
             TokenGenerator tokens,
             JavaMailSender mail,
             AuditService audit,
             @Value("${app.mail.reset-url}") String resetUrlBase) {
-        this.admins = admins;
+        this.users = users;
         this.resets = resets;
         this.tokens = tokens;
         this.mail = mail;
@@ -62,12 +63,14 @@ public class ForgotPasswordService {
     public ForgotPasswordResponse requestReset(ForgotPasswordRequest request, HttpServletRequest http) {
         String email = normalize(request.email());
 
-        Admin admin = admins.findByEmailIgnoreCase(email).orElse(null);
+        UserAccount user = users.findByEmailIgnoreCase(email)
+                .filter(u -> u.getRole() == Role.ADMIN)
+                .orElse(null);
 
         // Unknown or inactive account: audit + log, but respond exactly like a success.
-        if (admin == null || !admin.isEnabled()) {
+        if (user == null || !user.isEnabled()) {
             audit.record("FORGOT_PASSWORD_REQUESTED", "AUTH",
-                    admin == null ? null : String.valueOf(admin.getId()),
+                    user == null ? null : String.valueOf(user.getId()),
                     null, "{\"email\":\"" + email + "\",\"status\":\"NO_EMAIL_SENT\"}", http);
             log.info("Password reset requested for email without an active account");
             return ForgotPasswordResponse.generic();
@@ -76,41 +79,36 @@ public class ForgotPasswordService {
         String rawToken = tokens.generate();
 
         // Invalidate every previous active token so only the newest one works.
-        resets.markAllUsedFor(admin);
+        resets.markAllUsedFor(user);
 
-        PasswordResetToken stored = new PasswordResetToken();
-        stored.setAdmin(admin);
-        stored.setTokenHash(HashUtil.sha256(rawToken));
-        stored.setExpiresAt(Instant.now().plus(TOKEN_TTL));
-        stored.setUsed(false);
-        resets.save(stored);
+        ResetToken stored = resets.save(new ResetToken(rawToken, user, Instant.now().plus(TOKEN_TTL)));
 
-        log.info("Password reset token created for admin {} (expires {})", admin.getId(), stored.getExpiresAt());
+        log.info("Password reset token created for user {}", user.getId());
 
         try {
-            sendResetEmail(admin, rawToken);
+            sendResetEmail(user, rawToken);
         } catch (MailException | MessagingException e) {
-            log.error("Password reset email failed for admin {}", admin.getId(), e);
-            audit.record("FORGOT_PASSWORD_REQUESTED", "AUTH", String.valueOf(admin.getId()),
+            log.error("Password reset email failed for user {}", user.getId(), e);
+            audit.record("FORGOT_PASSWORD_REQUESTED", "AUTH", String.valueOf(user.getId()),
                     null, "{\"email\":\"" + email + "\",\"status\":\"EMAIL_FAILED\"}", http);
             throw new PasswordResetMailException();
         }
 
-        log.info("Password reset email sent to admin {}", admin.getId());
-        audit.record("FORGOT_PASSWORD_REQUESTED", "AUTH", String.valueOf(admin.getId()),
+        log.info("Password reset email sent to user {}", user.getId());
+        audit.record("FORGOT_PASSWORD_REQUESTED", "AUTH", String.valueOf(user.getId()),
                 null, "{\"email\":\"" + email + "\",\"status\":\"EMAIL_SENT\"}", http);
 
         return ForgotPasswordResponse.generic();
     }
 
-    private void sendResetEmail(Admin admin, String rawToken) throws MessagingException {
+    private void sendResetEmail(UserAccount user, String rawToken) throws MessagingException {
         MimeMessage message = mail.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(message, false, StandardCharsets.UTF_8.name());
 
-        helper.setTo(admin.getEmail());
+        helper.setTo(user.getEmail());
         helper.setSubject("Reset Your MaidItQuick Admin Password");
 
-        String body = "Hello " + admin.getDisplayName() + "\n\n"
+        String body = "Hello " + user.getName() + "\n\n"
                 + "We received a request to reset your password.\n\n"
                 + "Click the link below.\n"
                 + resetUrlBase + "/reset-password.html?token=" + rawToken + "\n\n"

@@ -1,6 +1,6 @@
 services:
-  admin-api:
-    build: ../backend
+  server:
+    build: ../server
     environment:
       DB_URL: ${DB_URL}
       DB_USERNAME: ${DB_USERNAME}
@@ -8,10 +8,5 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL:-}
       ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
-      CORS_ORIGIN: http://localhost:5173
-    ports: ["8083:8083"]
-  admin-web:
-    build: ../frontend
-    environment: { VITE_API_URL: http://localhost:8083/api/v1/admin }
-    ports: ["5173:80"]
-    depends_on: [admin-api]
+      CORS_ORIGIN: http://localhost:8080
+    ports: ["8080:8080"]

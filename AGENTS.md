@@ -4,20 +4,21 @@ Guidance for AI coding agents working in this repository.
 
 ## Project layout
 
-- `backend/` — Spring Boot 3.5 (Java 21), Maven, Spring Security + JWT, JPA/Hibernate, MySQL.
-- `frontend/` — vanilla HTML/CSS/JS SPA (no build step, no frameworks), served statically.
+- `server/` — Spring Boot 3.5 (Java 21), Maven, Spring Security + JWT, JPA/Hibernate, MySQL. The merged monolith serving both the mobile API and the admin API from one process and one database. The admin SPA lives in `server/src/main/resources/static/` (synced from `frontend/` via `server/scripts/sync-admin-frontend.sh`).
+- `frontend/` — vanilla HTML/CSS/JS admin SPA (no build step, no frameworks), embedded in the jar and also served statically.
 
 ## Commands
 
-- Build backend: `mvn clean package -DskipTests` from `backend/` (jar: `backend/target/admin-api-0.1.0.jar`).
-- Run backend: `java -jar backend/target/admin-api-0.1.0.jar` (binds `localhost:8083`).
+- Build server: `mvn clean package -DskipTests` from `server/` (jar: `server/target/makeitquick-server-0.1.0.jar`).
+- Run server: `java -jar server/target/makeitquick-server-0.1.0.jar` (binds `localhost:8080`; admin UI + API same origin).
+- Sync admin frontend into the jar: `server/scripts/sync-admin-frontend.sh`.
 - Run frontend dev server: `python -m http.server 5173 --bind 0.0.0.0 --directory frontend`.
 - Local SMTP sink (for password-reset emails): `python -u -m aiosmtpd -n -c aiosmtpd.handlers.Debugging -l localhost:1025` (unbuffered `-u` so the log file updates live).
 - MySQL CLI used for DB checks: `"C:\Program Files\MySQL\MySQL Workbench 8.0 CE\mysql.exe" -h localhost -P 3306 -u root -p1234 maiditquick -e "<sql>"`.
 
 ## Verification scripts (in `C:\Users\Admin\AppData\Local\Temp\opencode\`)
 
-All target the live backend on 8083 and self-clean their fixtures. Run with `node <file>`.
+All target the live backend on 8080 and self-clean their fixtures. Run with `node <file>`.
 
 - `verify-us11.mjs` — US 1.1 login (JWT, refresh rotation, remember-me, lockout 429, error contract). 32 assertions.
 - `verify-us12.mjs` — US 1.2 forgot password (generic 200, SMTP capture, hashed 15-min tokens, invalidation, rate limit 5/hr, audits). 25 assertions.
@@ -45,12 +46,13 @@ All target the live backend on 8083 and self-clean their fixtures. Run with `nod
 - `utils.qs` is a QUERY-STRING builder (`qs({a:1})` → `?a=1`) — NOT a DOM selector. Only `ledger.js`/`returns.js`/`user-requests.js`/`partners.js` use it correctly. `settlements.js`/`escalations.js` define their own local `const qs = (sel) => document.querySelector(sel)`; keep that pattern for new pages instead of importing `qs` for DOM work.
 - Full-route UI sweep: `node sweep-all.mjs` opens all 23 routes in headless Edge, asserts each renders (no "Module unavailable"/"Something went wrong"), and writes screenshots to `screenshots/` — run it after any frontend refactor. `check-imports.mjs` cross-checks every import statement against actual exports.
 - Modals: `openModal`/`confirmDialog` in `app.js`; the close machinery (`overlay._close`, `closeTopModal`) is set up by `openModal` itself — callers only bind extra button handlers. `confirmDialog` resolves via its own `done()`.
-- Partner KYC documents: uploaded via `POST /partners/{id}/documents` (multipart `identity`/`address`), stored under `backend/uploads/partners/`, served publicly at `/uploads/**`.
-- Passwords: BCrypt(12). Reset/refresh tokens stored only as SHA-256 hashes.
+- Partner KYC documents: uploaded via `POST /partners/{id}/documents` (multipart `identity`/`address`), stored under `server/uploads/partners/` (`app.uploads-dir`), served publicly at `/uploads/**`.
+- Passwords: BCrypt(12). Admin refresh tokens stored only as SHA-256 hashes (`user_refresh_tokens`); password-reset tokens are single-use rows in `password_reset_tokens`.
 - `AuditService.record` runs `REQUIRES_NEW` — failure audits must survive business-transaction rollbacks.
 - MySQL `bit(1)` columns render as raw NUL bytes via CLI — use `IF(col=1,1,0)` in SQL checks.
-- Fixtures that log in leave `admin_refresh_tokens` rows; deleting such admins requires deleting those rows first (FK).
+- Fixtures that log in leave `user_refresh_tokens` rows; deleting such users requires deleting those rows first (FK).
+- Identity is unified: admins are `Role.ADMIN` rows on the `users` table; there is a single admin role carrying every permission (see `AdminPermissions`). The old `admins`/`admin_roles`/`admin_permissions` tables are retired.
 - The `RateLimitFilter` windows are per-IP (20 auth POSTs/min) and per email+IP (5 forgot-password/hour) — repeated test runs against the same email within an hour get 429; use fresh temp admins per run.
-- Backend boot takes ~30 s; the PID reported by `Start-Process` may differ from the real java process — verify via port 8083 listener.
+- Backend boot takes ~30 s; the PID reported by `Start-Process` may differ from the real java process — verify via port 8080 listener.
 - Demo data is seeded once (when the partners table is empty) by `DemoDataSeeder` — deleting ALL partners and restarting the backend re-seeds it. This includes `seedPayments()` (PAID/PENDING/FAILED per booking) and support requests with categories — but the guard means an existing DB does NOT get payments; on an already-seeded DB, create demo payments via `POST /payments` (bookingId `NULL` rows are orphans and should be deleted).
 - Return status is a strict state machine (REQUESTED→APPROVED|REJECTED, APPROVED→REFUNDED|REJECTED); support requests likewise (OPEN→IN_PROGRESS|RESOLVED|CLOSED, IN_PROGRESS→RESOLVED|CLOSED, RESOLVED→CLOSED|OPEN, CLOSED→OPEN) — transitions outside these throw 4xx, so tests must follow legal chains.

@@ -1,5 +1,9 @@
 package com.maiditquick.admin.admin;
 
+import com.makeitquick.security.AdminPermissions;
+import com.makeitquick.security.Role;
+import com.makeitquick.security.UserAccount;
+import com.makeitquick.security.UserRepository;
 import com.maiditquick.admin.audit.AuditService;
 import com.maiditquick.admin.common.ApiResponse;
 import com.maiditquick.admin.common.NotFoundException;
@@ -18,19 +22,22 @@ import org.springframework.web.bind.annotation.*;
 import java.time.Instant;
 import java.util.List;
 
+/**
+ * Administrators are {@link Role#ADMIN} {@link UserAccount}s on the unified
+ * {@code users} table. The single ADMIN role carries every permission.
+ */
 @RestController
 @RequestMapping("/api/v1/admin/admins")
 public class AdminsController {
 
-  private final AdminRepository admins;
-  private final AdminRoleRepository roles;
+  private static final RoleInfo ADMIN_ROLE = new RoleInfo(1L, "ADMIN", "Administrator");
+
+  private final UserRepository users;
   private final PasswordEncoder passwords;
   private final AuditService audit;
 
-  public AdminsController(AdminRepository admins, AdminRoleRepository roles,
-                          PasswordEncoder passwords, AuditService audit) {
-    this.admins = admins;
-    this.roles = roles;
+  public AdminsController(UserRepository users, PasswordEncoder passwords, AuditService audit) {
+    this.users = users;
     this.passwords = passwords;
     this.audit = audit;
   }
@@ -43,9 +50,8 @@ public class AdminsController {
       @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
     PageRequest pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
     var result = query.isBlank()
-        ? admins.findAll(pageable)
-        : admins.findByEmailIgnoreCaseContainingOrDisplayNameIgnoreCaseContaining(
-            query.toLowerCase(), query.toLowerCase(), pageable);
+        ? users.findByRole(Role.ADMIN, pageable)
+        : users.searchByRole(Role.ADMIN, query.toLowerCase(), pageable);
     return ApiResponse.ok(PageResponse.from(result, AdminView::from));
   }
 
@@ -58,52 +64,48 @@ public class AdminsController {
   @PostMapping
   @PreAuthorize("hasAuthority('ADMINS_MANAGE')")
   public ApiResponse<AdminView> create(@Valid @RequestBody Create body, HttpServletRequest req) {
-    if (admins.findByEmailIgnoreCase(body.email().trim()).isPresent()) {
+    if (users.existsByEmailIgnoreCase(body.email().trim())) {
       throw new IllegalArgumentException("An administrator with this email already exists");
     }
-    Admin a = new Admin();
-    a.setEmail(body.email().trim());
-    a.setPasswordHash(passwords.encode(body.password()));
-    a.setDisplayName(body.displayName().trim());
+    UserAccount a = new UserAccount(body.displayName().trim(), body.email().trim(),
+        passwords.encode(body.password()), Role.ADMIN);
     a.setEnabled(body.enabled() == null || body.enabled());
-    a.setRole(findRole(body.roleId()));
-    Admin saved = admins.save(a);
+    UserAccount saved = users.save(a);
     audit.record("ADMIN_CREATED", "ADMINS", String.valueOf(saved.getId()), null,
-        "{\"email\":\"" + saved.getEmail() + "\",\"role\":\"" + saved.getRole().getCode() + "\"}", req);
+        "{\"email\":\"" + saved.getEmail() + "\",\"role\":\"ADMIN\"}", req);
     return ApiResponse.created(AdminView.from(saved));
   }
 
   @PutMapping("/{id}")
   @PreAuthorize("hasAuthority('ADMINS_MANAGE')")
   public ApiResponse<AdminView> update(@PathVariable long id, @Valid @RequestBody Update body, HttpServletRequest req) {
-    Admin a = find(id);
-    String before = "{\"email\":\"" + a.getEmail() + "\",\"role\":\"" + a.getRole().getCode() + "\",\"enabled\":" + a.isEnabled() + "}";
-    a.setDisplayName(body.displayName().trim());
-    a.setRole(findRole(body.roleId()));
+    UserAccount a = find(id);
+    String before = "{\"email\":\"" + a.getEmail() + "\",\"role\":\"ADMIN\",\"enabled\":" + a.isEnabled() + "}";
+    a.setName(body.displayName().trim());
     if (body.enabled() != null) {
       a.setEnabled(body.enabled());
     }
     if (body.password() != null && !body.password().isBlank()) {
       a.setPasswordHash(passwords.encode(body.password()));
     }
-    Admin saved = admins.save(a);
+    UserAccount saved = users.save(a);
     audit.record("ADMIN_UPDATED", "ADMINS", String.valueOf(id), before,
-        "{\"email\":\"" + saved.getEmail() + "\",\"role\":\"" + saved.getRole().getCode() + "\",\"enabled\":" + saved.isEnabled() + "}", req);
+        "{\"email\":\"" + saved.getEmail() + "\",\"role\":\"ADMIN\",\"enabled\":" + saved.isEnabled() + "}", req);
     return ApiResponse.ok(AdminView.from(saved));
   }
 
   @PatchMapping("/{id}/status")
   @PreAuthorize("hasAuthority('ADMINS_MANAGE')")
   public ApiResponse<AdminView> changeStatus(@PathVariable long id, @Valid @RequestBody StatusChange body, HttpServletRequest req) {
-    Admin a = find(id);
+    UserAccount a = find(id);
     if (!body.enabled() && currentAdminId() == id) {
       throw new IllegalArgumentException("You cannot disable your own account");
     }
-    if (!body.enabled() && "SUPER_ADMIN".equals(a.getRole().getCode()) && admins.countByRoleCodeAndEnabledTrue("SUPER_ADMIN") <= 1) {
-      throw new IllegalArgumentException("At least one active SUPER_ADMIN must remain");
+    if (!body.enabled() && users.countByRole(Role.ADMIN) <= 1) {
+      throw new IllegalArgumentException("At least one active ADMIN must remain");
     }
     a.setEnabled(body.enabled());
-    Admin saved = admins.save(a);
+    UserAccount saved = users.save(a);
     audit.record("ADMIN_STATUS_CHANGED", "ADMINS", String.valueOf(id), null,
         "{\"enabled\":" + saved.isEnabled() + "}", req);
     return ApiResponse.ok(AdminView.from(saved));
@@ -113,15 +115,15 @@ public class AdminsController {
   @ResponseStatus(HttpStatus.NO_CONTENT)
   @PreAuthorize("hasAuthority('ADMINS_MANAGE')")
   public void delete(@PathVariable long id, HttpServletRequest req) {
-    Admin a = find(id);
+    UserAccount a = find(id);
     if (currentAdminId() == id) {
       throw new IllegalArgumentException("You cannot delete your own account");
     }
-    if ("SUPER_ADMIN".equals(a.getRole().getCode()) && a.isEnabled()
-        && admins.countByRoleCodeAndEnabledTrue("SUPER_ADMIN") <= 1) {
-      throw new IllegalArgumentException("At least one active SUPER_ADMIN must remain");
+    if (a.isEnabled() && users.countByRole(Role.ADMIN) <= 1) {
+      throw new IllegalArgumentException("At least one active ADMIN must remain");
     }
-    admins.delete(a);
+    a.setEnabled(false);
+    users.save(a);
     audit.record("ADMIN_DELETED", "ADMINS", String.valueOf(id), null, null, req);
   }
 
@@ -133,12 +135,8 @@ public class AdminsController {
     }
   }
 
-  private Admin find(long id) {
-    return admins.findById(id).orElseThrow(() -> NotFoundException.of("Admin", id));
-  }
-
-  private AdminRole findRole(long id) {
-    return roles.findById(id).orElseThrow(() -> NotFoundException.of("Role", id));
+  private UserAccount find(long id) {
+    return users.findById(id).orElseThrow(() -> NotFoundException.of("Admin", id));
   }
 
   public record Create(
@@ -160,13 +158,15 @@ public class AdminsController {
       @NotNull Boolean enabled) {
   }
 
+  public record RoleInfo(Long id, String code, String name) {
+  }
+
   public record AdminView(Long id, String email, String displayName, boolean enabled,
-                          Instant lockedUntil, int failedAttempts, AdminRole role,
+                          Instant lockedUntil, int failedAttempts, RoleInfo role,
                           List<String> permissions) {
-    static AdminView from(Admin a) {
-      return new AdminView(a.getId(), a.getEmail(), a.getDisplayName(), a.isEnabled(),
-          a.getLockedUntil(), a.getFailedAttempts(), a.getRole(),
-          a.getRole().getPermissions().stream().map(AdminPermission::getCode).toList());
+    static AdminView from(UserAccount u) {
+      return new AdminView(u.getId(), u.getEmail(), u.getName(), u.isEnabled(),
+          u.getLockedUntil(), u.getFailedAttempts(), ADMIN_ROLE, AdminPermissions.ALL);
     }
   }
 }

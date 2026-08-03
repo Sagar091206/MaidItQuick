@@ -18,8 +18,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.maiditquick.admin.admin.Admin;
-import com.maiditquick.admin.admin.AdminRepository;
+import com.makeitquick.security.AdminPermissions;
+import com.makeitquick.security.UserAccount;
+import com.makeitquick.security.UserRepository;
 import com.maiditquick.admin.auth.AuthExceptions.InvalidCredentialsException;
 import com.maiditquick.admin.common.ApiResponse;
 import com.maiditquick.admin.common.NotFoundException;
@@ -43,15 +44,15 @@ public class AuthController {
     private static final Duration REMEMBER_ME_DAYS = Duration.ofDays(7);
 
     private final AuthService auth;
-    private final AdminRepository admins;
+    private final UserRepository users;
     private final boolean cookieSecure;
 
     public AuthController(
             AuthService auth,
-            AdminRepository admins,
+            UserRepository users,
             @Value("${app.cookie-secure}") boolean cookieSecure) {
         this.auth = auth;
-        this.admins = admins;
+        this.users = users;
         this.cookieSecure = cookieSecure;
     }
 
@@ -101,20 +102,7 @@ public class AuthController {
     @GetMapping("/me")
     @PreAuthorize("isAuthenticated()")
     public ApiResponse<Profile> me() {
-        long id;
-        try {
-            id = Long.parseLong(SecurityContextHolder.getContext().getAuthentication().getName());
-        } catch (Exception e) {
-            throw new InvalidCredentialsException("Authentication required");
-        }
-        Admin admin = admins.findById(id).orElseThrow(() -> NotFoundException.of("Admin", id));
-        return ApiResponse.ok(new Profile(
-                admin.getId(),
-                admin.getEmail(),
-                admin.getDisplayName(),
-                admin.isEnabled(),
-                new RoleInfo(admin.getRole().getId(), admin.getRole().getCode(), admin.getRole().getName()),
-                admin.getRole().getPermissions().stream().map(p -> p.getCode()).toList()));
+        return ApiResponse.ok(Profile.from(currentAdmin()));
     }
 
     @PostMapping("/change-password")
@@ -124,7 +112,7 @@ public class AuthController {
             @CookieValue(name = "admin_refresh", required = false) String token,
             HttpServletRequest request) {
 
-        Admin admin = currentAdmin();
+        UserAccount admin = currentAdmin();
         auth.changePassword(admin, body.currentPassword(), body.newPassword(), token, request);
 
         return ApiResponse.ok("Password changed. All other devices were signed out.");
@@ -161,7 +149,7 @@ public class AuthController {
             HttpServletRequest request,
             HttpServletResponse response) {
 
-        Admin admin = currentAdmin();
+        UserAccount admin = currentAdmin();
         int revoked = auth.signOutEverywhere(admin, request);
         cookie(response, "", false);
         return ApiResponse.ok("Signed out on all devices (" + revoked + " session(s) revoked).");
@@ -175,8 +163,9 @@ public class AuthController {
         }
     }
 
-    private Admin currentAdmin() {
-        return admins.findById(currentAdminId()).orElseThrow(() -> NotFoundException.of("Admin", currentAdminId()));
+    private UserAccount currentAdmin() {
+        return users.findById(currentAdminId())
+                .orElseThrow(() -> NotFoundException.of("Admin", currentAdminId()));
     }
 
     public record ChangePassword(
@@ -191,6 +180,10 @@ public class AuthController {
 
     public record Profile(Long id, String email, String name, boolean enabled,
                           RoleInfo role, List<String> permissions) {
+        static Profile from(UserAccount u) {
+            return new Profile(u.getId(), u.getEmail(), u.getName(), u.isEnabled(),
+                    new RoleInfo(1L, "ADMIN", "Administrator"), AdminPermissions.ALL);
+        }
     }
 
     /**
