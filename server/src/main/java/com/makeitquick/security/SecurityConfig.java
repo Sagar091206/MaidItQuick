@@ -3,6 +3,7 @@ package com.makeitquick.security;
 import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -15,8 +16,11 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableWebSecurity
 public class SecurityConfig {
     @Bean
+    @Order(2)
     SecurityFilterChain filterChain(HttpSecurity http, SessionAuthenticationFilter sessionFilter) throws Exception {
         return http
+                // This chain is the fallback for every path not claimed by the
+                // higher-priority admin chain (com.maiditquick.admin.security).
                 // Authentication uses an explicit bearer token, never a browser
                 // cookie, so CSRF protection is not applicable to this stateless API.
                 .csrf(AbstractHttpConfigurer::disable)

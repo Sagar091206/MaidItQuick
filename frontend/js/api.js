@@ -8,11 +8,12 @@
    ============================================================ */
 
 // Backend base: if the page is served from the Vite-like dev origin (5173),
-// target the API on 8083; otherwise assume same-origin hosting.
+// target the API on 8080 (the merged mobile+admin server); otherwise assume
+// same-origin hosting.
 const DEV_ORIGIN = "http://localhost:5173";
 export const API_BASE =
   window.location.origin === DEV_ORIGIN || window.location.hostname === "localhost"
-    ? "http://localhost:8083/api/v1/admin"
+    ? "http://localhost:8080/api/v1/admin"
     : "/api/v1/admin";
 
 // Origin of the backend (for /uploads/... document images).

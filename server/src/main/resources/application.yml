@@ -1,6 +1,6 @@
 spring:
   config:
-    import: optional:file:.env[.properties],optional:file:.env.local[.properties]
+    import: optional:file:.env[.properties],optional:file:.env.local[.properties],optional:classpath:test-admin-overrides.properties
   datasource:
     url: ${MYSQL_URL:jdbc:mysql://localhost:3306/makeitquick?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Kolkata}
     username: ${MYSQL_USER:root}
@@ -9,6 +9,19 @@ spring:
     hibernate:
       ddl-auto: update
     open-in-view: false
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:false}
+          starttls:
+            enable: ${MAIL_STARTTLS:false}
+          ssl:
+            enable: ${MAIL_SSL:false}
 server:
   port: ${PORT:8080}
   # HTTPS is production-ready and disabled by default for local development.
@@ -49,6 +62,37 @@ app:
     name: ${APP_ADMIN_NAME:MaidItQuick Admin}
     email: ${APP_ADMIN_EMAIL:}
     password: ${APP_ADMIN_PASSWORD:}
+  # ---- admin web module (Phase 1 merged into this process) ----
+  jwt:
+    secret: ${ADMIN_JWT_SECRET:mySuperSecretKeyThatIsAtLeast32CharactersLong123}
+    access-minutes: 15
+    refresh-days: 7
+  cors-origin: ${CORS_ORIGIN:http://localhost:5173}
+  cookie-secure: false
+  uploads-dir: ${UPLOADS_DIR:uploads}
+  mail.reset-url: ${RESET_URL:https://localhost:5173}
+  bootstrap:
+    email: ${ADMIN_BOOTSTRAP_EMAIL:a.k.bharati019@gmail.com}
+    password: ${ADMIN_BOOTSTRAP_PASSWORD:123456789101}
+    support-email: ${SUPPORT_BOOTSTRAP_EMAIL:support@maiditquick.com}
+    support-password: ${SUPPORT_BOOTSTRAP_PASSWORD:123456789101}
+admin:
+  datasource:
+    url: ${ADMIN_DB_URL:jdbc:mysql://localhost:3306/maiditquick?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${ADMIN_DB_USERNAME:root}
+    password: ${ADMIN_DB_PASSWORD:1234}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
 spring.servlet.multipart:
   max-file-size: 5MB
   max-request-size: 5MB

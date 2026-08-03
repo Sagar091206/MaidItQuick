@@ -18,6 +18,7 @@ mobile/.idea/
 
 # Java / Maven
 server/target/
+backend/target/
 server/.mvn/wrapper/maven-wrapper.jar
 *.class
 *.log

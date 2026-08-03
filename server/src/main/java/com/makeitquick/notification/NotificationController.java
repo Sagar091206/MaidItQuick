@@ -3,6 +3,7 @@ package com.makeitquick.notification;
 import com.makeitquick.security.SessionResolver;
 import com.makeitquick.security.UserAccount;
 import com.makeitquick.security.UserRepository;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -69,14 +70,15 @@ public class NotificationController {
     }
 
     private Map<String, Object> view(AppNotification notification) {
-        return Map.of(
-                "id", notification.getId(),
-                "type", notification.getType(),
-                "title", notification.getTitle(),
-                "message", notification.getMessage(),
-                "read", notification.isRead(),
-                "createdAt", notification.getCreatedAt(),
-                "bookingId", notification.getBookingId());
+        Map<String, Object> result = new HashMap<>();
+        result.put("id", notification.getId());
+        result.put("type", notification.getType());
+        result.put("title", notification.getTitle());
+        result.put("message", notification.getMessage());
+        result.put("read", notification.isRead());
+        result.put("createdAt", notification.getCreatedAt());
+        result.put("bookingId", notification.getBookingId());
+        return result;
     }
 
     record PreferenceInput(boolean emailNotifications) {}
