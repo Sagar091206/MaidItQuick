@@ -70,8 +70,8 @@ public class BookingAssignmentService {
         UserAccount worker = best.get();
         b.assign(worker);
         bookings.save(b);
-        notifications.send(worker, NotificationType.WORKER_ASSIGNMENT, "New job assigned",
-                "You have been assigned " + b.getService() + " for " + b.getScheduledFor() + ".");
+        notifications.sendBooking(worker, NotificationType.WORKER_ASSIGNMENT, "New booking request",
+                "You have been assigned " + b.getService() + " for " + b.getScheduledFor() + ".", b.getId());
         notifications.send(b.getCustomer(), NotificationType.BOOKING, "Worker assigned",
                 "A worker has been assigned to your " + b.getService() + " booking.");
         return best;

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/api_client.dart';
@@ -30,22 +32,40 @@ class PartnerDashboardScreen extends StatefulWidget {
   State<PartnerDashboardScreen> createState() => _PartnerDashboardScreenState();
 }
 
-class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
+class _PartnerDashboardScreenState extends State<PartnerDashboardScreen>
+    with WidgetsBindingObserver {
   Map<String, dynamic>? _dashboard;
   int _selectedDashboardTab = 0;
   bool _loading = true;
   bool _availabilityChanging = false;
   String? _error;
+  Timer? _pollTimer;
 
-  late final PartnerRepository _partnerRepository = PartnerRepository(widget.api);
+  late final PartnerRepository _partnerRepository =
+      PartnerRepository(widget.api);
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _pollTimer = Timer.periodic(
+        const Duration(seconds: 12), (_) => _loadDashboard(showMessage: false));
     _dashboard = widget.initialProfile == null
         ? null
         : Map<String, dynamic>.from(widget.initialProfile!);
     _loadDashboard(showMessage: false);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _loadDashboard(showMessage: false);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _pollTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadDashboard({bool showMessage = true}) async {
@@ -57,14 +77,30 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
     }
 
     try {
-      final dashboard =
-          await _partnerRepository.fetchProfile(widget.session.token);
+      final results = await Future.wait<dynamic>([
+        _partnerRepository.fetchProfile(widget.session.token),
+        _partnerRepository.fetchBookings(widget.session.token),
+        _partnerRepository.fetchNotifications(widget.session.token),
+      ]);
+      final dashboard = Map<String, dynamic>.from(results[0] as Map);
+      final bookings = List<Map<String, dynamic>>.from(results[1] as List);
+      final notifications = List<Map<String, dynamic>>.from(results[2] as List);
+      final requests = bookings
+          .where((booking) => booking['status']?.toString() == 'ASSIGNED')
+          .toList();
+      final otherBookings = bookings
+          .where((booking) => booking['status']?.toString() != 'ASSIGNED')
+          .toList();
 
       if (!mounted) return;
       setState(() {
         _dashboard = {
           ...?_dashboard,
           ...dashboard,
+          'newRequests': requests,
+          'upcomingBookings': otherBookings,
+          'notifications': notifications,
+          'newRequestCount': requests.length,
         };
       });
     } on ApiException catch (error) {
@@ -162,24 +198,24 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
   /// Formats a rupee amount. Numeric values are treated as rupees; strings
   /// that already carry a currency symbol are returned unchanged.
   String _money(dynamic value) {
-    if (value == null) return '₹0';
+    if (value == null) return 'Ã¢â€šÂ¹0';
 
     if (value is num) {
       final amount = value < 0 ? value.abs() : value;
       final digits = amount % 1 == 0 ? 0 : 2;
-      return '₹${amount.toStringAsFixed(digits)}';
+      return 'Ã¢â€šÂ¹${amount.toStringAsFixed(digits)}';
     }
 
     final text = value.toString().trim();
-    if (text.isEmpty) return '₹0';
-    return text.startsWith('₹') ? text : '₹$text';
+    if (text.isEmpty) return 'Ã¢â€šÂ¹0';
+    return text.startsWith('Ã¢â€šÂ¹') ? text : 'Ã¢â€šÂ¹$text';
   }
 
   /// Converts a paise value (the API's canonical money unit) to rupees.
   String _paise(dynamic value) {
-    if (value == null) return '₹0';
+    if (value == null) return 'Ã¢â€šÂ¹0';
     final paise = value is num ? value : double.tryParse(value.toString());
-    if (paise == null) return '₹0';
+    if (paise == null) return 'Ã¢â€šÂ¹0';
     return _money(paise / 100);
   }
 
@@ -195,7 +231,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
     for (final key in paiseKeys) {
       if (data[key] != null) return _paise(data[key]);
     }
-    return '₹0';
+    return 'Ã¢â€šÂ¹0';
   }
 
   String _nextBooking(List<Map<String, dynamic>> bookings) {
@@ -210,6 +246,20 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
   }
 
   Future<void> _openBooking(Map<String, dynamic> booking) async {
+    final bookingId = (booking['id'] ?? booking['bookingId'] ?? '').toString();
+    if (bookingId.isNotEmpty) {
+      try {
+        booking = {
+          ...booking,
+          ...await _partnerRepository.fetchBooking(
+              widget.session.token, bookingId)
+        };
+      } on ApiException catch (error) {
+        _showMessage(error.message);
+        return;
+      }
+    }
+    if (!mounted) return;
     await Navigator.of(context).push<String>(
       MaterialPageRoute(
         builder: (_) => IncomingBookingRequestScreen(
@@ -221,7 +271,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
     );
 
     // Whether the partner accepted, rejected, or the request expired, the
-    // booking list is stale afterwards — refresh it on return.
+    // booking list is stale afterwards Ã¢â‚¬â€ refresh it on return.
     if (!mounted) return;
     await _loadDashboard(showMessage: false);
   }
@@ -409,7 +459,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                               label: 'Rating',
                               value: (data['rating'] ??
                                       data['averageRating'] ??
-                                      '—')
+                                      'Ã¢â‚¬â€')
                                   .toString(),
                               helper:
                                   '${data['completedJobs'] ?? 0} completed jobs',
@@ -566,6 +616,7 @@ class _DashboardTabPage extends StatelessWidget {
           pendingActions: pendingActions,
           notifications: notifications,
           onRefresh: onRefresh,
+          onOpenBooking: onOpenBooking,
         ),
       4 => PartnerProfileTab(
           dashboard: dashboard,
@@ -576,6 +627,7 @@ class _DashboardTabPage extends StatelessWidget {
     };
   }
 }
+
 class _EligibilityCard extends StatelessWidget {
   const _EligibilityCard({
     required this.eligible,

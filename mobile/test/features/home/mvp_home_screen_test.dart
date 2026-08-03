@@ -60,6 +60,7 @@ void main() {
       onLogout: () {},
       onOpenSettings: () {},
       onBookService: () async {},
+      onInstantMaid: () {},
       onOpenBookings: () {},
     )));
 
@@ -80,6 +81,7 @@ void main() {
       onLogout: () {},
       onOpenSettings: () {},
       onBookService: () async {},
+      onInstantMaid: () {},
       onOpenBookings: () {},
     )));
     await tester.pumpAndSettle();
@@ -97,6 +99,7 @@ void main() {
       onLogout: () {},
       onOpenSettings: () {},
       onBookService: () async {},
+      onInstantMaid: () {},
       onOpenBookings: () {},
     )));
     await tester.pumpAndSettle();

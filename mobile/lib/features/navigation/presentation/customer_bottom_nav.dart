@@ -4,8 +4,10 @@ import '../../../core/api_client.dart';
 import '../../../shared/widgets/app_states.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../booking/presentation/booking_history_screen.dart';
+import '../../booking/data/customer_addresses_repository.dart';
 import '../../booking/presentation/booking_wizard_screen.dart';
 import '../../home/presentation/mvp_home_screen.dart';
+import '../../instant/presentation/instant_maid_screen.dart';
 import '../../profile/data/customer_profile_repository.dart';
 import '../../profile/presentation/customer_profile_screen.dart';
 import '../../profile/presentation/profile_tab.dart';
@@ -56,6 +58,23 @@ class _CustomerBottomNavState extends State<CustomerBottomNav> {
     );
   }
 
+  Future<void> _openInstantMaid() async {
+    final addresses = await CustomerAddressesRepository(widget.api)
+        .list(widget.session.token);
+    CustomerAddress? selected;
+    for (final address in addresses) {
+      if (address.defaultAddress) {
+        selected = address;
+        break;
+      }
+    }
+    selected ??= addresses.isEmpty ? null : addresses.first;
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+        builder: (context) => InstantMaidScreen(
+            api: widget.api, session: widget.session, address: selected)));
+  }
+
   Future<void> _openProfileEditor() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
@@ -96,6 +115,7 @@ class _CustomerBottomNavState extends State<CustomerBottomNav> {
         onOpenSettings: _openSettings,
         onBookService: _openBookingFlow,
         onOpenBookings: () => _switchTab(1),
+        onInstantMaid: _openInstantMaid,
       ),
       BookingHistoryScreen(
         api: api,

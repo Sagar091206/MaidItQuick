@@ -23,6 +23,7 @@ class MvpHomeScreen extends StatefulWidget {
     required this.onOpenSettings,
     required this.onBookService,
     required this.onOpenBookings,
+    required this.onInstantMaid,
   });
 
   final ApiClient api;
@@ -31,6 +32,7 @@ class MvpHomeScreen extends StatefulWidget {
   final VoidCallback onOpenSettings;
   final Future<void> Function() onBookService;
   final VoidCallback onOpenBookings;
+  final VoidCallback onInstantMaid;
 
   @override
   State<MvpHomeScreen> createState() => _MvpHomeScreenState();
@@ -247,8 +249,7 @@ class _MvpHomeScreenState extends State<MvpHomeScreen> {
                 children: [
                   if (_offline)
                     OfflineBanner(
-                        onRetry:
-                            _dashboard == null ? _loadDashboard : null),
+                        onRetry: _dashboard == null ? _loadDashboard : null),
                   Expanded(
                     child: _error != null && _dashboard == null
                         ? ErrorStateView(
@@ -269,6 +270,7 @@ class _MvpHomeScreenState extends State<MvpHomeScreen> {
                               onOpenServiceDetails: _openServiceDetails,
                               onTrackBooking: _openTrackBooking,
                               onOpenBookings: widget.onOpenBookings,
+                              onInstantMaid: widget.onInstantMaid,
                             ),
                           ),
                   ),
@@ -293,6 +295,7 @@ class _DashboardBody extends StatelessWidget {
     required this.onOpenServiceDetails,
     required this.onTrackBooking,
     required this.onOpenBookings,
+    required this.onInstantMaid,
   });
 
   final CustomerDashboard dashboard;
@@ -307,6 +310,7 @@ class _DashboardBody extends StatelessWidget {
   final ValueChanged<ServiceCategory> onOpenServiceDetails;
   final ValueChanged<DashboardBooking> onTrackBooking;
   final VoidCallback onOpenBookings;
+  final VoidCallback onInstantMaid;
 
   @override
   Widget build(BuildContext context) {
@@ -326,11 +330,19 @@ class _DashboardBody extends StatelessWidget {
           style: TextStyle(color: BrandColors.muted, height: 1.35),
         ),
         const SizedBox(height: 20),
-        FilledButton.icon(
-          onPressed: onBookService,
-          icon: const Icon(Icons.add_task_outlined),
-          label: const Text('Book a service'),
-        ),
+        Row(children: [
+          Expanded(
+              child: OutlinedButton.icon(
+                  onPressed: onBookService,
+                  icon: const Icon(Icons.schedule_outlined),
+                  label: const Text('Schedule'))),
+          const SizedBox(width: 10),
+          Expanded(
+              child: FilledButton.icon(
+                  onPressed: onInstantMaid,
+                  icon: const Icon(Icons.bolt),
+                  label: const Text('Instant')))
+        ]),
         const SizedBox(height: 22),
         const SectionHeader(title: 'Service address'),
         const SizedBox(height: 10),
@@ -485,8 +497,7 @@ class _DefaultAddressCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               address.address,
-              style: TextStyle(
-                  color: context.brandMuted, height: 1.3),
+              style: TextStyle(color: context.brandMuted, height: 1.3),
             ),
             const SizedBox(height: 4),
             Text(
@@ -565,15 +576,15 @@ class _ServiceCard extends StatelessWidget {
 
   static String emojiFor(String name) {
     final n = name.toLowerCase();
-    if (n.contains('bath')) return '🛁';
-    if (n.contains('kitchen')) return '🍳';
-    if (n.contains('bed')) return '🛏️';
-    if (n.contains('balcony')) return '🪴';
-    if (n.contains('living')) return '🛋️';
-    if (n.contains('deep') || n.contains('full')) return '✨';
-    if (n.contains('dust')) return '🧹';
-    if (n.contains('window')) return '🪟';
-    return '🧽';
+    if (n.contains('bath')) return 'Ã°Å¸â€ºÂ';
+    if (n.contains('kitchen')) return 'Ã°Å¸ÂÂ³';
+    if (n.contains('bed')) return 'Ã°Å¸â€ºÂÃ¯Â¸Â';
+    if (n.contains('balcony')) return 'Ã°Å¸ÂªÂ´';
+    if (n.contains('living')) return 'Ã°Å¸â€ºâ€¹Ã¯Â¸Â';
+    if (n.contains('deep') || n.contains('full')) return 'Ã¢Å“Â¨';
+    if (n.contains('dust')) return 'Ã°Å¸Â§Â¹';
+    if (n.contains('window')) return 'Ã°Å¸ÂªÅ¸';
+    return 'Ã°Å¸Â§Â½';
   }
 
   @override
@@ -589,9 +600,7 @@ class _ServiceCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                service.emoji.isEmpty
-                    ? emojiFor(service.name)
-                    : service.emoji,
+                service.emoji.isEmpty ? emojiFor(service.name) : service.emoji,
                 style: const TextStyle(fontSize: 34),
               ),
               const Spacer(),
@@ -605,7 +614,8 @@ class _ServiceCard extends StatelessWidget {
               const SizedBox(height: 5),
               Text(
                 service.priceLabel,
-                style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w700),
+                style: TextStyle(
+                    color: scheme.primary, fontWeight: FontWeight.w700),
               ),
             ],
           ),
@@ -648,7 +658,7 @@ class _ActiveBookingHero extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              '${formatDateTime(booking.scheduledFor)} · ${booking.durationMinutes} min',
+              '${formatDateTime(booking.scheduledFor)} Ã‚Â· ${booking.durationMinutes} min',
               style: TextStyle(color: context.brandMuted),
             ),
             const SizedBox(height: 12),
@@ -695,8 +705,7 @@ class _BookingCard extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               booking.service,
-              style:
-                  const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 6),
             Text(
