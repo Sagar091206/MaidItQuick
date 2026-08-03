@@ -75,7 +75,8 @@ public class NotificationController {
                 "title", notification.getTitle(),
                 "message", notification.getMessage(),
                 "read", notification.isRead(),
-                "createdAt", notification.getCreatedAt());
+                "createdAt", notification.getCreatedAt(),
+                "bookingId", notification.getBookingId());
     }
 
     record PreferenceInput(boolean emailNotifications) {}

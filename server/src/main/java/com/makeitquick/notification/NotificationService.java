@@ -42,6 +42,10 @@ public class NotificationService {
         }
     }
 
+    public void sendBooking(UserAccount recipient, NotificationType type, String title, String message, Long bookingId) {
+        notifications.save(new AppNotification(recipient, type, title, message, bookingId));
+    }
+
     private boolean hasDeliverableEmail(UserAccount recipient) {
         return recipient.getEmail() != null && !recipient.getEmail().isBlank();
     }

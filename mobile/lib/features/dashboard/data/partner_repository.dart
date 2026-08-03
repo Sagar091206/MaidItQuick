@@ -105,6 +105,17 @@ class PartnerRepository {
         token: token,
       ));
 
+  Future<List<Map<String, dynamic>>> fetchBookings(String token) =>
+      _asList(_api.get('/bookings', token: token));
+
+  Future<List<Map<String, dynamic>>> fetchNotifications(String token) =>
+      _asList(_api.get('/notifications', token: token));
+
+  Future<Map<String, dynamic>> markNotificationRead(
+          String token, String notificationId) =>
+      _asMap(_api.post('/notifications/$notificationId/read', const {},
+          token: token));
+
   Future<Map<String, dynamic>> fetchBooking(String token, String bookingId) =>
       _asMap(_api.get('/bookings/$bookingId', token: token));
 
@@ -121,12 +132,16 @@ class PartnerRepository {
   }) =>
       _asMap(_api.post(
         '/bookings/$bookingId/reject',
-        {if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim()},
+        {
+          if (reason != null && reason.trim().isNotEmpty)
+            'reason': reason.trim()
+        },
         token: token,
       ));
 
   Future<Map<String, dynamic>> startJourney(String token, String bookingId) =>
-      _asMap(_api.post('/bookings/$bookingId/on-the-way', const {}, token: token));
+      _asMap(
+          _api.post('/bookings/$bookingId/on-the-way', const {}, token: token));
 
   Future<Map<String, dynamic>> requestContactToken(
     String token,
@@ -145,7 +160,10 @@ class PartnerRepository {
   }) =>
       _asMap(_api.post(
         '/bookings/$bookingId/cancel',
-        {if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim()},
+        {
+          if (reason != null && reason.trim().isNotEmpty)
+            'reason': reason.trim()
+        },
         token: token,
       ));
 
@@ -164,8 +182,20 @@ class PartnerRepository {
         fields: fields,
       ));
 
+  Future<List<Map<String, dynamic>>> _asList(Future<dynamic> request) async {
+    final payload = await request;
+    return payload is List
+        ? payload
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList()
+        : <Map<String, dynamic>>[];
+  }
+
   Future<Map<String, dynamic>> _asMap(Future<dynamic> request) async {
     final payload = await request;
-    return payload is Map ? Map<String, dynamic>.from(payload) : <String, dynamic>{};
+    return payload is Map
+        ? Map<String, dynamic>.from(payload)
+        : <String, dynamic>{};
   }
 }

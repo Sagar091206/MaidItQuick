@@ -32,6 +32,8 @@ public class AppNotification {
     @Column(nullable = false, length = 1000)
     private String message;
 
+    private Long bookingId;
+
     @Column(name = "is_read", nullable = false)
     private boolean read = false;
 
@@ -42,10 +44,15 @@ public class AppNotification {
     }
 
     AppNotification(UserAccount recipient, NotificationType type, String title, String message) {
+        this(recipient, type, title, message, null);
+    }
+
+    AppNotification(UserAccount recipient, NotificationType type, String title, String message, Long bookingId) {
         this.recipient = recipient;
         this.type = type;
         this.title = title;
         this.message = message;
+        this.bookingId = bookingId;
     }
 
     public Long getId() { return id; }
@@ -53,6 +60,7 @@ public class AppNotification {
     public NotificationType getType() { return type; }
     public String getTitle() { return title; }
     public String getMessage() { return message; }
+    public Long getBookingId() { return bookingId; }
     public boolean isRead() { return read; }
     public Instant getCreatedAt() { return createdAt; }
     public void markRead() { read = true; }

@@ -8,11 +8,13 @@ class PartnerAlertsTab extends StatefulWidget {
     required this.pendingActions,
     required this.notifications,
     required this.onRefresh,
+    required this.onOpenBooking,
   });
 
   final List<Map<String, dynamic>> pendingActions;
   final List<Map<String, dynamic>> notifications;
   final Future<void> Function() onRefresh;
+  final ValueChanged<Map<String, dynamic>> onOpenBooking;
 
   @override
   State<PartnerAlertsTab> createState() => _AlertsTabState();
@@ -156,6 +158,12 @@ class _AlertsTabState extends State<PartnerAlertsTab> {
 
   void _openItem(Map<String, dynamic> item) {
     _markRead(item);
+
+    final bookingId = item['bookingId'];
+    if (bookingId != null) {
+      widget.onOpenBooking({'id': bookingId});
+      return;
+    }
 
     final category = _categoryOf(item);
     final message = switch (category) {
@@ -442,4 +450,3 @@ class _AlertsEmptyState extends StatelessWidget {
     );
   }
 }
-

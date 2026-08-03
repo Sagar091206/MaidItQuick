@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-interface SavedAddressRepository extends JpaRepository<SavedAddress, Long> {
+public interface SavedAddressRepository extends JpaRepository<SavedAddress, Long> {
     List<SavedAddress> findByCustomerOrderByIdDesc(UserAccount customer);
     Optional<SavedAddress> findByIdAndCustomer(Long id, UserAccount customer);
     Optional<SavedAddress> findByCustomerAndDefaultAddressTrue(UserAccount customer);
