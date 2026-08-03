@@ -11,8 +11,8 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 
-@Entity
-@Table(name = "bookings")
+@Entity(name = "AdminBooking")
+@Table(name = "admin_bookings")
 @Getter
 @Setter
 @NoArgsConstructor

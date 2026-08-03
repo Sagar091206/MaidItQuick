@@ -13,7 +13,7 @@ import java.time.Instant;
  * as a newer reset token is issued for the same admin.
  */
 @Entity
-@Table(name = "password_reset_tokens", indexes = {
+@Table(name = "admin_password_reset_tokens", indexes = {
         @Index(name = "idx_prt_admin_id", columnList = "admin_id"),
         @Index(name = "idx_prt_token_hash", columnList = "token_hash"),
         @Index(name = "idx_prt_expires_at", columnList = "expires_at")

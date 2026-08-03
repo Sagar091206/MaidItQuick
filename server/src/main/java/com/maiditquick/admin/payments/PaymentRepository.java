@@ -12,6 +12,6 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
   long countByStatus(String status);
 
-  @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.status = 'PAID'")
+  @Query("SELECT COALESCE(SUM(p.amount), 0) FROM AdminPayment p WHERE p.status = 'PAID'")
   BigDecimal sumPaid();
 }
