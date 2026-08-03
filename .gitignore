@@ -1,8 +1,50 @@
-node_modules/
-dist/
-target/
-.env
+# Flutter
+.tooling/
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/.pub-cache/
+mobile/build/
+mobile/coverage/
+mobile/android/.gradle/
+mobile/android/.kotlin/
+mobile/android/local.properties
+mobile/android/app/debug/
+mobile/android/app/profile/
+mobile/android/app/release/
+mobile/ios/Pods/
+mobile/.idea/
+
+# Java / Maven
+server/target/
+server/.mvn/wrapper/maven-wrapper.jar
+*.class
+*.log
+
+# IDE
 .idea/
+.vscode/
 *.iml
 
-work/
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+application-local.yml
+application-local.properties
+
+# Uploads
+server/uploads/
+uploads/
+
+# Operating system
+.DS_Store
+Thumbs.db
+
+# Packaged artifacts
+*.apk
+*.aab
+*.zip

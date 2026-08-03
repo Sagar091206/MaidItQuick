@@ -2,8 +2,7 @@ package com.makeitquick.worker;
 
 import com.makeitquick.operations.AvailabilityStatus;
 import com.makeitquick.security.Role;
-import com.makeitquick.security.Session;
-import com.makeitquick.security.SessionRepository;
+import com.makeitquick.security.SessionResolver;
 import com.makeitquick.security.UserAccount;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
@@ -45,15 +44,15 @@ public class WorkerSafetyController {
     private static final Set<String> IMAGE_TYPES = Set.of("image/jpeg", "image/png");
 
     private final WorkerProfileRepository profiles;
-    private final SessionRepository sessions;
+    private final SessionResolver resolver;
     private final Path uploadDirectory;
 
     WorkerSafetyController(
             WorkerProfileRepository profiles,
-            SessionRepository sessions,
+            SessionResolver resolver,
             @Value("${app.uploads.directory:uploads/kyc}") String uploadDirectory) {
         this.profiles = profiles;
-        this.sessions = sessions;
+        this.resolver = resolver;
         this.uploadDirectory = Path.of(uploadDirectory).toAbsolutePath().normalize();
     }
 
@@ -247,8 +246,7 @@ public class WorkerSafetyController {
     }
 
     private UserAccount requireUser(String authorization) {
-        String token = authorization == null ? "" : authorization.replaceFirst("(?i)^Bearer\\s+", "");
-        return sessions.findByToken(token).filter(Session::valid).map(Session::getUser)
+        return resolver.fromBearer(authorization)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Please sign in"));
     }
 
@@ -277,6 +275,9 @@ public class WorkerSafetyController {
         view.put("name", profile.getUser().getName());
         view.put("email", profile.getUser().getEmail());
         view.put("phone", profile.getUser().getPhone());
+        view.put("gender", profile.getUser().getGender());
+        view.put("dob", profile.getUser().getDob() == null ? "" : profile.getUser().getDob().toString());
+        view.put("profileImage", profile.getUser().getProfileImage());
         view.put("consentAccepted", profile.isConsentAccepted());
         view.put("consentAcceptedAt", profile.getConsentAcceptedAt());
         view.put("kycStatus", profile.getKycStatus());

@@ -4,29 +4,63 @@ class AuthRepository {
   AuthRepository(this._api);
   final ApiClient _api;
 
-  Future<void> register({
-    required String name,
-    required String email,
-    required String password,
-    required UserRole role,
+  Future<OtpChallenge> sendOtp({required String phone}) async {
+    final payload = await _api.post('/v1/auth/send-otp', {'phone': phone});
+    return OtpChallenge.fromJson(Map<String, dynamic>.from(payload as Map));
+  }
+
+  Future<AuthV1Result> verifyOtp({
+    required String phone,
+    required String otp,
   }) async {
-    await _api.post('/auth/register', {
+    final payload =
+        await _api.post('/v1/auth/verify-otp', {'phone': phone, 'otp': otp});
+    return AuthV1Result.fromJson(Map<String, dynamic>.from(payload as Map));
+  }
+
+  Future<Session> completeProfile({
+    required String pendingToken,
+    required String name,
+    String? email,
+    String? gender,
+    String? dob,
+    String? profileImage,
+  }) async {
+    final payload = await _api.post('/v1/auth/complete-profile', {
+      'pendingToken': pendingToken,
       'name': name,
-      'email': email,
-      'password': password,
-      'role': role.apiValue,
+      if (email != null && email.isNotEmpty) 'email': email,
+      if (gender != null && gender.isNotEmpty) 'gender': gender,
+      if (dob != null && dob.isNotEmpty) 'dob': dob,
+      if (profileImage != null && profileImage.isNotEmpty)
+        'profileImage': profileImage,
     });
+    return Session.fromJson(Map<String, dynamic>.from(payload as Map));
   }
 
-  Future<Session> login({required String email, required String password}) async {
-    final payload = await _api.post('/auth/login', {'email': email, 'password': password});
-    return Session(token: payload['token'] as String, role: payload['role'] as String, name: payload['name'] as String);
+  Future<Session> validateSession(String token) async {
+    final payload = await _api.get('/auth/session', token: token);
+    return Session.fromJson(Map<String, dynamic>.from(payload as Map));
   }
 
-  Future<OtpChallenge> startPartnerSignup({required String name, required String phone}) async {
+  Future<void> logout(String token) async {
+    await _api.post('/auth/logout', {}, token: token);
+  }
+
+  Future<OtpChallenge> startPartnerSignup({
+    required String name,
+    required String phone,
+    String? gender,
+    String? dob,
+    String? profileImage,
+  }) async {
     final payload = await _api.post('/auth/partner/otp/signup/start', {
       'name': name,
       'phone': phone,
+      if (gender != null && gender.isNotEmpty) 'gender': gender,
+      if (dob != null && dob.isNotEmpty) 'dob': dob,
+      if (profileImage != null && profileImage.isNotEmpty)
+        'profileImage': profileImage,
     });
     return OtpChallenge.fromJson(Map<String, dynamic>.from(payload as Map));
   }
@@ -42,7 +76,7 @@ class AuthRepository {
       'purpose': purpose,
       'otp': otp,
     });
-    return Session(token: payload['token'] as String, role: payload['role'] as String, name: payload['name'] as String);
+    return Session.fromJson(Map<String, dynamic>.from(payload as Map));
   }
 }
 
@@ -60,18 +94,67 @@ class OtpChallenge {
   final String? devOtp;
 }
 
-enum UserRole {
-  customer('customer', 'Customer'),
-  partner('worker', 'Partner');
+/// Canonicalizes the role string returned by the API so callers only ever
+/// compare against `customer` or `worker` (or the reserved `admin`).
+String canonicalRole(String? role) {
+  switch ((role ?? '').trim().toUpperCase()) {
+    case 'WORKER':
+    case 'PARTNER':
+      return 'worker';
+    case 'ADMIN':
+      return 'admin';
+    default:
+      return 'customer';
+  }
+}
 
-  const UserRole(this.apiValue, this.label);
-  final String apiValue;
-  final String label;
+enum UserRole {
+  customer,
+  partner;
 }
 
 class Session {
   const Session({required this.token, required this.role, required this.name});
+
+  factory Session.fromJson(Map<String, dynamic> json) => Session(
+        token: json['token'] as String,
+        role: canonicalRole(json['role'] as String?),
+        name: json['name'] as String? ?? '',
+      );
+
   final String token;
   final String role;
   final String name;
+
+  /// Whether this session belongs to a worker/partner (not a customer).
+  bool get isWorker => role == 'worker';
+}
+
+/// Result of verifying an OTP for the unified customer flow.
+///
+/// An existing customer receives a [session]; a new customer receives a
+/// [pendingToken] that must be exchanged via the complete-profile call.
+class AuthV1Result {
+  const AuthV1Result({required this.existing, this.session, this.pendingToken, required this.phone});
+
+  factory AuthV1Result.fromJson(Map<String, dynamic> json) {
+    final existing = json['existing'] as bool? ?? false;
+    return AuthV1Result(
+      existing: existing,
+      session: existing
+          ? Session(
+              token: json['token'] as String,
+              role: canonicalRole(json['role'] as String?),
+              name: json['name'] as String? ?? '',
+            )
+          : null,
+      pendingToken: existing ? null : json['pendingToken'] as String?,
+      phone: json['phone'] as String? ?? '',
+    );
+  }
+
+  final bool existing;
+  final Session? session;
+  final String? pendingToken;
+  final String phone;
 }

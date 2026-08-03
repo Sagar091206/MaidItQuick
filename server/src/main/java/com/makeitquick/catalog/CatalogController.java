@@ -1,12 +1,13 @@
 package com.makeitquick.catalog;
 
 import com.makeitquick.security.Role;
-import com.makeitquick.security.Session;
-import com.makeitquick.security.SessionRepository;
+import com.makeitquick.security.SessionResolver;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -21,15 +23,30 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/services")
 public class CatalogController {
     private final ServiceItemRepository services;
-    private final SessionRepository sessions;
+    private final SessionResolver resolver;
 
-    CatalogController(ServiceItemRepository services, SessionRepository sessions) {
+    CatalogController(ServiceItemRepository services, SessionResolver resolver) {
         this.services = services;
-        this.sessions = sessions;
+        this.resolver = resolver;
     }
 
     @GetMapping
-    public List<ServiceItem> list() { return services.findByEnabledTrueOrderByNameAsc(); }
+    public List<Map<String, Object>> list(@RequestParam(required = false) String q) {
+        List<ServiceItem> items;
+        if (q != null && !q.isBlank()) {
+            items = services.findByEnabledTrueAndNameContainingIgnoreCaseOrderByNameAsc(q.trim());
+        } else {
+            items = services.findByEnabledTrueOrderByNameAsc();
+        }
+        return items.stream().map(this::serviceView).toList();
+    }
+
+    @GetMapping("/{id}")
+    public Map<String, Object> detail(@PathVariable Long id) {
+        ServiceItem service = services.findByIdAndEnabledTrue(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Service not found"));
+        return serviceView(service);
+    }
 
     @GetMapping("/admin")
     public List<ServiceItem> listForAdmin(@RequestHeader(value = "Authorization", required = false) String authorization) {
@@ -58,9 +75,21 @@ public class CatalogController {
         return services.save(service);
     }
 
+    /** Customer-facing view of a catalog item (additive keys only). */
+    Map<String, Object> serviceView(ServiceItem service) {
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("id", service.getId());
+        view.put("name", service.getName());
+        view.put("pricePaise", service.getPricePaise());
+        view.put("description", service.getDescription());
+        view.put("emoji", service.getEmoji());
+        view.put("defaultDurationMinutes", service.getDefaultDurationMinutes());
+        view.put("enabled", service.isEnabled());
+        return view;
+    }
+
     private void requireAdmin(String authorization) {
-        String token = authorization == null ? "" : authorization.replaceFirst("(?i)^Bearer\\s+", "");
-        Role role = sessions.findByToken(token).filter(Session::valid).map(session -> session.getUser().getRole())
+        Role role = resolver.fromBearer(authorization).map(user -> user.getRole())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Please sign in"));
         if (role != Role.ADMIN) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin access required");
     }

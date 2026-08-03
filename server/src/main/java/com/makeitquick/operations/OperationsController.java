@@ -1,8 +1,7 @@
 package com.makeitquick.operations;
 
 import com.makeitquick.security.Role;
-import com.makeitquick.security.Session;
-import com.makeitquick.security.SessionRepository;
+import com.makeitquick.security.SessionResolver;
 import com.makeitquick.security.UserAccount;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -22,7 +21,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Admin-only controls for MakeItQuick's launch operations.
- * Authentication currently uses the opaque session token returned by /api/auth/login.
+ * Authentication accepts the legacy opaque session tokens and the JWT issued by /api/v1/auth.
  */
 @RestController
 @RequestMapping("/api/operations")
@@ -31,17 +30,17 @@ public class OperationsController {
     private final ServiceAreaRepository areas;
     private final SlaAlertRepository alerts;
     private final RefundRequestRepository refunds;
-    private final SessionRepository sessions;
+    private final SessionResolver resolver;
 
     OperationsController(
             ServiceAreaRepository areas,
             SlaAlertRepository alerts,
             RefundRequestRepository refunds,
-            SessionRepository sessions) {
+            SessionResolver resolver) {
         this.areas = areas;
         this.alerts = alerts;
         this.refunds = refunds;
-        this.sessions = sessions;
+        this.resolver = resolver;
     }
 
     @GetMapping("/areas")
@@ -135,10 +134,7 @@ public class OperationsController {
     }
 
     private UserAccount requireAdmin(String authorization) {
-        String token = authorization == null ? "" : authorization.replaceFirst("(?i)^Bearer\\s+", "");
-        UserAccount user = sessions.findByToken(token)
-                .filter(Session::valid)
-                .map(Session::getUser)
+        UserAccount user = resolver.fromBearer(authorization)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Please sign in"));
         if (user.getRole() != Role.ADMIN) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin access required");
