@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.makeitquick.MakeItQuickApplication;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -21,7 +22,7 @@ import org.springframework.test.web.servlet.ResultActions;
  * a single process (Phase 1), so they pin down status codes, the response
  * envelope and the auth flow rather than implementation details.
  */
-@SpringBootTest(properties = {
+@SpringBootTest(classes = MakeItQuickApplication.class, properties = {
         "spring.datasource.url=jdbc:h2:mem:admincontract;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE",
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.datasource.username=sa",

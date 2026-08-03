@@ -22,7 +22,7 @@ import org.springframework.web.server.ResponseStatusException;
  * {@code {timestamp, status, error, path, message}} without leaking stack
  * traces or server internals to API clients.
  */
-@RestControllerAdvice
+@RestControllerAdvice(basePackages = "com.makeitquick")
 public class ApiExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
