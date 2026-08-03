@@ -1,0 +1,3 @@
+package com.makeitquick.admin.audit;
+import org.springframework.data.domain.*; import org.springframework.security.access.prepost.PreAuthorize; import org.springframework.web.bind.annotation.*;
+@RestController @RequestMapping("/api/v1/admin/audit") public class AuditController { private final AuditLogRepository logs; public AuditController(AuditLogRepository l){logs=l;} @GetMapping @PreAuthorize("hasAuthority('AUDIT_READ')") public Page<AuditLog> list(@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="50") int size){return logs.findAll(PageRequest.of(Math.max(page,0),Math.min(Math.max(size,1),100),Sort.by(Sort.Direction.DESC,"occurredAt")));} }
