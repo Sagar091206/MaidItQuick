@@ -658,7 +658,7 @@ class _ActiveBookingHero extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              '${formatDateTime(booking.scheduledFor)} \\u00B7 ${booking.durationMinutes} min',
+              '${formatDateTime(booking.scheduledFor)} \u00B7 ${booking.durationMinutes} min',
               style: TextStyle(color: context.brandMuted),
             ),
             const SizedBox(height: 12),

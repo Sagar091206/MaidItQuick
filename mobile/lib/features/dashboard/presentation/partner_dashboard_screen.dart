@@ -459,7 +459,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen>
                               label: 'Rating',
                               value: (data['rating'] ??
                                       data['averageRating'] ??
-                                      'Ã¢â‚¬â€')
+                                      '\u2014')
                                   .toString(),
                               helper:
                                   '${data['completedJobs'] ?? 0} completed jobs',
