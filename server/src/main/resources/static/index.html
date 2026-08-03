@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MaidItQuick Admin — Enterprise Dashboard</title>
+  <link rel="icon" type="image/svg+xml" href="assets/icons/favicon.svg">
+  <script type="module">
+    // Entry point: restore the session via the refresh cookie, then route.
+    import { restoreSession } from './js/auth.js';
+    try {
+      await restoreSession();
+      window.location.replace('dashboard.html#/dashboard');
+    } catch {
+      window.location.replace('login.html');
+    }
+  </script>
+</head>
+<body>
+</body>
+</html>

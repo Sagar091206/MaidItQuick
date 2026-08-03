@@ -40,6 +40,10 @@ app:
     # at least 32 characters in production (export JWT_SECRET).
     jwt-secret: ${JWT_SECRET:makeitquick-local-dev-secret-change-me-0123456789abcdef}
     jwt-expiry-days: ${JWT_EXPIRY_DAYS:30}
+    # Admin realm tokens: short-lived access tokens minted by the same issuer,
+    # backed by users-table (Role.ADMIN) accounts.
+    admin-access-minutes: ${ADMIN_ACCESS_MINUTES:15}
+    admin-refresh-days: ${ADMIN_REFRESH_DAYS:7}
     # Customer OTP policy (unified /api/v1/auth flow).
     otp:
       expiry-seconds: ${OTP_EXPIRY_SECONDS:300}
@@ -63,13 +67,6 @@ app:
     email: ${APP_ADMIN_EMAIL:}
     password: ${APP_ADMIN_PASSWORD:}
   # ---- admin web module (Phase 1 merged into this process) ----
-  jwt:
-    # Signing secret for admin access tokens. Must be distinct from the mobile
-    # app.security.jwt-secret (enforced at startup by JwtSecretGuard) so admin
-    # and mobile tokens cannot be replayed across realms. >= 32 chars.
-    secret: ${ADMIN_JWT_SECRET:mySuperSecretKeyThatIsAtLeast32CharactersLong123}
-    access-minutes: 15
-    refresh-days: 7
   cors-origin: ${CORS_ORIGIN:http://localhost:5173}
   cookie-secure: false
   uploads-dir: ${UPLOADS_DIR:uploads}

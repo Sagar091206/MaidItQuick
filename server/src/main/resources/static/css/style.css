@@ -1,0 +1,272 @@
+/* ============================================================
+   MaidItQuick Admin — style.css
+   Design tokens (light / dark), reset, base layout
+   ============================================================ */
+
+/* ---------- Light theme (default) ---------- */
+:root,
+:root[data-theme="light"] {
+  /* Surfaces & backgrounds */
+  --bg: #ffffff;
+  --bg-soft: #f6faf7;
+  --bg-elevated: #ffffff;
+  --surface: #ffffff;
+  --surface-hover: #f0faf4;
+  --surface-strong: #e6f6ec;
+
+  /* Lines */
+  --border: #e8e8e8;
+  --border-strong: #d4d4d4;
+
+  /* Text */
+  --text: #1f2a24;
+  --text-2: #4b5a51;
+  --text-3: #8b9791;
+
+  /* Brand & semantic colors */
+  --accent: #22c55e;
+  --accent-2: #16a34a;
+  --accent-soft: rgba(34, 197, 94, 0.12);
+  --gradient: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  --success: #16a34a;
+  --success-soft: rgba(34, 197, 94, 0.12);
+  --warning: #f97316;
+  --warning-soft: rgba(249, 115, 22, 0.12);
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.1);
+  --info: #2563eb;
+  --info-soft: rgba(37, 99, 235, 0.1);
+
+  /* Shape & elevation */
+  --radius: 14px;
+  --radius-sm: 9px;
+  --radius-xs: 6px;
+  --shadow: 0 18px 44px rgba(16, 43, 28, 0.12);
+  --shadow-sm: 0 6px 18px rgba(16, 43, 28, 0.09);
+
+  /* Layout */
+  --topbar-h: 118px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+
+  /* Legacy aliases used by ops.css */
+  --primary: var(--accent);
+  --primary-soft: var(--accent-soft);
+  --text-1: var(--text);
+  --surface-2: var(--surface);
+  --line: var(--border);
+
+  /* Motion */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur: 0.24s;
+}
+
+/* ---------- Dark theme (MaidItQuick app inspired) ---------- */
+:root[data-theme="dark"] {
+  --bg: #000000;
+  --bg-soft: #050b07;
+  --bg-elevated: #101b14;
+  --surface: #101b14;
+  --surface-hover: #15241a;
+  --surface-strong: #1b2e21;
+
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.18);
+
+  --text: #ffffff;
+  --text-2: #9fb3a6;
+  --text-3: #5f7a6a;
+
+  --accent: #22c55e;
+  --accent-2: #a3e635;
+  --accent-soft: rgba(34, 197, 94, 0.16);
+  --gradient: linear-gradient(135deg, #22c55e 0%, #a3e635 100%);
+  --success: #4ade80;
+  --success-soft: rgba(74, 222, 128, 0.14);
+  --warning: #fb923c;
+  --warning-soft: rgba(251, 146, 60, 0.14);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.14);
+  --info: #60a5fa;
+  --info-soft: rgba(96, 165, 250, 0.14);
+
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  --shadow-sm: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* ---------- Reset ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--text);
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 99px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-3);
+}
+
+/* ---------- Ambient background ---------- */
+.app-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(900px 520px at 12% -8%, rgba(34, 197, 94, 0.07), transparent 60%),
+    radial-gradient(820px 500px at 92% -6%, rgba(22, 163, 74, 0.05), transparent 60%),
+    var(--bg);
+}
+:root[data-theme="dark"] .app-bg {
+  background:
+    radial-gradient(900px 520px at 12% -8%, rgba(34, 197, 94, 0.1), transparent 60%),
+    radial-gradient(820px 500px at 92% -6%, rgba(163, 230, 53, 0.05), transparent 60%),
+    var(--bg);
+}
+
+/* ---------- Typography helpers ---------- */
+.h1 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.h2 {
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.subtle {
+  color: var(--text-2);
+}
+.muted {
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+.mono {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+/* ---------- Generic utilities ---------- */
+.flex {
+  display: flex;
+  align-items: center;
+}
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+.gap-16 { gap: 16px; }
+.wrap { flex-wrap: wrap; }
+.grow { flex: 1 1 auto; }
+.hidden { display: none !important; }
+.text-right { text-align: right; }
+.text-center { text-align: center; }
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Skeleton loader */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface);
+  border-radius: var(--radius-xs);
+  color: transparent !important;
+  user-select: none;
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--surface-strong), transparent);
+  animation: shimmer 1.4s infinite;
+}
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Animations */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.fade-up { animation: fadeUp 0.32s var(--ease) both; }

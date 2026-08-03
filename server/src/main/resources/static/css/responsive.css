@@ -1,0 +1,166 @@
+/* ============================================================
+   MaidItQuick Admin — responsive.css
+   Breakpoints: 1280, 1080, 900, 720, 560
+   ============================================================ */
+
+@media (max-width: 1280px) {
+  .stat-strip {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .report-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 1080px) {
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .chart-grid,
+  .dash-grid,
+  .report-chart-grid,
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+  .topbar-brand .name,
+  .topbar-brand .sub {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .topnav {
+    padding: 0 14px;
+  }
+  .shell-main {
+    padding: 20px 16px;
+  }
+  .topbar-main {
+    padding: 10px 16px 8px;
+  }
+}
+
+@media (max-width: 720px) {
+  .stat-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .stat-card {
+    padding: 16px;
+  }
+  .stat-card .s-value {
+    font-size: 22px;
+  }
+  .stat-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .report-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .topbar-user .t-name {
+    display: none;
+  }
+  .breadcrumbs {
+    display: none;
+  }
+  .notif-panel {
+    position: fixed;
+    top: 66px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .stat-grid {
+    grid-template-columns: 1fr;
+  }
+  .report-grid {
+    grid-template-columns: 1fr;
+  }
+  .page-head {
+    align-items: flex-start;
+  }
+  .pager {
+    justify-content: center;
+  }
+  .toolbar .search-box {
+    max-width: none;
+    flex-basis: 100%;
+  }
+  .modal-overlay {
+    padding: 4vh 10px 10px;
+  }
+  .modal-body {
+    padding: 18px;
+  }
+}
+
+/* ============================================================
+   Print / PDF export
+   ============================================================ */
+#print-area {
+  display: none;
+}
+body.printing #print-area {
+  display: block;
+}
+body.printing .sidebar,
+body.printing .topbar,
+body.printing .toast-wrap,
+body.printing .modal-overlay,
+body.printing .spinner-overlay,
+body.printing .page-actions,
+body.printing .toolbar,
+body.printing .pager {
+  display: none !important;
+}
+body.printing .shell {
+  padding-top: 0;
+}
+
+@media print {
+  body.printing .app-bg {
+    display: none;
+  }
+  body.printing .shell-main {
+    padding: 0;
+  }
+  .print-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+  .print-table th,
+  .print-table td {
+    border: 1px solid #444;
+    padding: 6px 8px;
+    text-align: left;
+    color: #111;
+  }
+  .print-table th {
+    background: #eee;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 9.5px;
+    letter-spacing: 0.05em;
+  }
+  .print-title {
+    font-size: 18px;
+    font-weight: 800;
+    margin-bottom: 2px;
+  }
+  .print-sub {
+    font-size: 11px;
+    color: #555;
+    margin-bottom: 14px;
+  }
+  .print-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border: 1px solid #999;
+    border-radius: 99px;
+    font-size: 9px;
+  }
+}
