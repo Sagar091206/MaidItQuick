@@ -134,6 +134,14 @@ public class UserAccount {
         return enabled;
     }
 
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setEnabled(boolean value) {
+        enabled = value;
+    }
+
     public boolean isEmailNotifications() {
         return emailNotifications;
     }
