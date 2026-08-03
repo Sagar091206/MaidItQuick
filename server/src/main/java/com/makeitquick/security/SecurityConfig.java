@@ -79,7 +79,7 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain filterChain(HttpSecurity http,
                                     SessionAuthenticationFilter sessionFilter,
-                                    com.maiditquick.admin.security.RateLimitFilter rateLimit) throws Exception {
+                                    com.makeitquick.admin.security.RateLimitFilter rateLimit) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
