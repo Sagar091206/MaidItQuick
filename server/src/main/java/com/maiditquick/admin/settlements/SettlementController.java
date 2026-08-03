@@ -1,16 +1,20 @@
 package com.maiditquick.admin.settlements;
 
 import com.maiditquick.admin.audit.AuditService;
-import com.maiditquick.admin.bookings.Booking;
-import com.maiditquick.admin.bookings.BookingRepository;
 import com.maiditquick.admin.common.ApiResponse;
 import com.maiditquick.admin.common.NotFoundException;
 import com.maiditquick.admin.notifications.Notification;
 import com.maiditquick.admin.notifications.NotificationRepository;
-import com.maiditquick.admin.partners.Partner;
-import com.maiditquick.admin.partners.PartnerRepository;
 import com.maiditquick.admin.settings.Setting;
 import com.maiditquick.admin.settings.SettingRepository;
+import com.makeitquick.booking.Booking;
+import com.makeitquick.booking.BookingRepository;
+import com.makeitquick.booking.BookingStatus;
+import com.makeitquick.security.Role;
+import com.makeitquick.security.UserAccount;
+import com.makeitquick.security.UserRepository;
+import com.makeitquick.worker.WorkerProfile;
+import com.makeitquick.worker.WorkerProfileRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
@@ -38,17 +42,20 @@ public class SettlementController {
 
   private final PayoutRecordRepository payouts;
   private final BookingRepository bookings;
-  private final PartnerRepository partners;
+  private final UserRepository workers;
+  private final WorkerProfileRepository workerProfiles;
   private final SettingRepository settings;
   private final NotificationRepository notifications;
   private final AuditService audit;
 
   public SettlementController(PayoutRecordRepository payouts, BookingRepository bookings,
-                              PartnerRepository partners, SettingRepository settings,
-                              NotificationRepository notifications, AuditService audit) {
+                              UserRepository workers, WorkerProfileRepository workerProfiles,
+                              SettingRepository settings, NotificationRepository notifications,
+                              AuditService audit) {
     this.payouts = payouts;
     this.bookings = bookings;
-    this.partners = partners;
+    this.workers = workers;
+    this.workerProfiles = workerProfiles;
     this.settings = settings;
     this.notifications = notifications;
     this.audit = audit;
@@ -151,7 +158,7 @@ public class SettlementController {
             + "\",\"amount\":\"" + saved.getAmount().toPlainString()
             + "\",\"period\":\"" + saved.getPeriodLabel() + "\"}",
         req);
-    notify("Payout initiated — " + saved.getPartner().getName(),
+    notify("Payout initiated — " + saved.getWorker().getName(),
         "A payout of ₹" + saved.getAmount().toPlainString() + " for period "
             + saved.getPeriodLabel() + " has been initiated. Reference: " + saved.getTransactionRef(),
         "SUCCESS");
@@ -162,24 +169,26 @@ public class SettlementController {
     String period = currentPeriod();
     Instant weekStart = LocalDate.now().with(DayOfWeek.MONDAY)
         .atStartOfDay(ZoneId.systemDefault()).toInstant();
-    List<Partner> approved = partners.findAll().stream()
-        .filter(p -> "APPROVED".equals(p.getKycStatus())).toList();
+    List<UserAccount> approvedWorkers = workers.findAll().stream()
+        .filter(w -> w.getRole() == Role.WORKER)
+        .filter(w -> workerProfiles.findByUser(w).map(WorkerProfile::isReadyForJobs).orElse(false))
+        .toList();
     BigDecimal pct = commissionPct();
-    for (Partner partner : approved) {
-      if (payouts.findByPartnerAndPeriodLabel(partner, period).isPresent()) continue;
+    for (UserAccount worker : approvedWorkers) {
+      if (payouts.findByWorkerAndPeriodLabel(worker, period).isPresent()) continue;
       BigDecimal net = BigDecimal.ZERO;
       for (Booking b : bookings.findAll()) {
-        if (b.getPartner() == null || !b.getPartner().getId().equals(partner.getId())) continue;
-        if (!"COMPLETED".equals(b.getStatus())) continue;
+        if (b.getWorker() == null || !b.getWorker().getId().equals(worker.getId())) continue;
+        if (b.getStatus() != BookingStatus.COMPLETED) continue;
         if (b.getCreatedAt() == null || b.getCreatedAt().isBefore(weekStart)) continue;
-        BigDecimal amount = b.getTotalAmount() == null ? BigDecimal.ZERO : b.getTotalAmount();
+        BigDecimal amount = BigDecimal.valueOf(b.getPaymentAmountPaise(), 2);
         BigDecimal commission = amount.multiply(pct)
             .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
         net = net.add(amount.subtract(commission));
       }
       if (net.compareTo(BigDecimal.ZERO) <= 0) continue;
       PayoutRecord rec = new PayoutRecord();
-      rec.setPartner(partner);
+      rec.setWorker(worker);
       rec.setPeriodLabel(period);
       rec.setAmount(net);
       payouts.save(rec);

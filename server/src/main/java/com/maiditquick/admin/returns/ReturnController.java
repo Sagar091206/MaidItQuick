@@ -1,11 +1,11 @@
 package com.maiditquick.admin.returns;
 
 import com.maiditquick.admin.audit.AuditService;
-import com.maiditquick.admin.bookings.Booking;
-import com.maiditquick.admin.bookings.BookingRepository;
 import com.maiditquick.admin.common.ApiResponse;
 import com.maiditquick.admin.common.NotFoundException;
 import com.maiditquick.admin.common.PageResponse;
+import com.makeitquick.booking.Booking;
+import com.makeitquick.booking.BookingRepository;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -67,7 +67,7 @@ public class ReturnController {
     Booking b = r.getBookingId() == null ? null : bookings.findById(r.getBookingId()).orElse(null);
     return new ReturnView(r.getId(), r.getBookingId(),
         b == null || b.getCustomer() == null ? "—" : b.getCustomer().getName(),
-        b == null || b.getService() == null ? "—" : b.getService().getName(),
+        b == null || b.getService() == null ? "—" : b.getService(),
         r.getRequestedAmount(), r.getReason(), r.getStatus(), r.getAdminNote(),
         r.getCreatedAt(), r.getDecidedAt());
   }

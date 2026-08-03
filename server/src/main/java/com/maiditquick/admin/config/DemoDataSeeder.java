@@ -1,28 +1,33 @@
 package com.maiditquick.admin.config;
 
-import com.maiditquick.admin.bookings.Booking;
-import com.maiditquick.admin.bookings.BookingRepository;
-import com.maiditquick.admin.customers.Customer;
-import com.maiditquick.admin.customers.CustomerRepository;
 import com.maiditquick.admin.escalations.Dispute;
 import com.maiditquick.admin.escalations.DisputeRepository;
 import com.maiditquick.admin.partners.Partner;
 import com.maiditquick.admin.partners.PartnerRepository;
-import com.maiditquick.admin.payments.Payment;
-import com.maiditquick.admin.payments.PaymentRepository;
 import com.maiditquick.admin.returns.ReturnRequest;
 import com.maiditquick.admin.returns.ReturnRepository;
-import com.maiditquick.admin.services.ServiceOffering;
-import com.maiditquick.admin.services.ServiceOfferingRepository;
 import com.maiditquick.admin.settings.Setting;
 import com.maiditquick.admin.settings.SettingRepository;
 import com.maiditquick.admin.support.SupportRepository;
 import com.maiditquick.admin.support.SupportRequest;
+import com.makeitquick.booking.Booking;
+import com.makeitquick.booking.BookingRepository;
+import com.makeitquick.booking.BookingStatus;
+import com.makeitquick.operations.AvailabilityStatus;
+import com.makeitquick.payment.Payment;
+import com.makeitquick.payment.PaymentRepository;
+import com.makeitquick.security.Role;
+import com.makeitquick.security.UserAccount;
+import com.makeitquick.security.UserRepository;
+import com.makeitquick.worker.WorkerProfile;
+import com.makeitquick.worker.WorkerProfileRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,13 +40,15 @@ import java.util.List;
 
 @Component
 @Order(30)
+@ConditionalOnProperty(name = "app.demo-data.enabled", havingValue = "true", matchIfMissing = true)
 public class DemoDataSeeder implements CommandLineRunner {
 
   private static final Logger log = LoggerFactory.getLogger(DemoDataSeeder.class);
+  private static final BCryptPasswordEncoder ENCODER = new BCryptPasswordEncoder(12);
 
   private final PartnerRepository partners;
-  private final CustomerRepository customers;
-  private final ServiceOfferingRepository services;
+  private final UserRepository users;
+  private final WorkerProfileRepository workerProfiles;
   private final BookingRepository bookings;
   private final SettingRepository settings;
   private final DisputeRepository disputes;
@@ -50,15 +57,15 @@ public class DemoDataSeeder implements CommandLineRunner {
   private final PaymentRepository payments;
   private final Path uploadDir;
 
-  public DemoDataSeeder(PartnerRepository partners, CustomerRepository customers,
-                        ServiceOfferingRepository services, BookingRepository bookings,
+  public DemoDataSeeder(PartnerRepository partners, UserRepository users,
+                        WorkerProfileRepository workerProfiles, BookingRepository bookings,
                         SettingRepository settings, DisputeRepository disputes,
                         ReturnRepository returns, SupportRepository support,
                         PaymentRepository payments,
                         @Value("${app.uploads-dir:uploads}") String uploadsDir) {
     this.partners = partners;
-    this.customers = customers;
-    this.services = services;
+    this.users = users;
+    this.workerProfiles = workerProfiles;
     this.bookings = bookings;
     this.settings = settings;
     this.disputes = disputes;
@@ -72,9 +79,10 @@ public class DemoDataSeeder implements CommandLineRunner {
   @Transactional
   public void run(String... args) throws Exception {
     ensureCommissionSetting();
+    seedCustomersAndWorkers();
+    seedBookingsAndPayments();
     seedDisputes();
     seedSupportData();
-    seedPayments();
 
     if (partners.count() > 0) {
       return;
@@ -117,9 +125,6 @@ public class DemoDataSeeder implements CommandLineRunner {
     seedDocs(priya, "PRIYA SHARMA", "AADHAAR", "5128 8899 1042", "Property tax receipt, Powai");
     seedDocs(lakshmi, "LAKSHMI IYER", "AADHAAR", "4876 3345 2910", "Bank statement, Colaba");
     seedDocs(reena, "REENA KULKARNI", "DRIVING LICENCE", "MH-04-2019-112233", "LPG bill, Mulund");
-
-    seedLiveBookings(priya, lakshmi, reena);
-    seedCompletedBooking(priya);
   }
 
   private void ensureCommissionSetting() {
@@ -129,6 +134,99 @@ public class DemoDataSeeder implements CommandLineRunner {
     s.setSettingValue("18");
     s.setDescription("Platform commission percentage applied to every booking payout");
     settings.save(s);
+  }
+
+  private void seedCustomersAndWorkers() {
+    if (users.countByRole(Role.CUSTOMER) > 0 && users.countByRole(Role.WORKER) > 0) {
+      return;
+    }
+    log.info("Seeding demo customers and workers…");
+    seedCustomer("Rohit Malhotra", "rohit.m@example.com", "+919845002001");
+    seedCustomer("Sneha Kulkarni", "sneha.k@example.com", "+919845002002");
+    seedCustomer("Vikram Singh", "vikram.s@example.com", "+919845002003");
+    seedCustomer("Aarti Deshpande", "aarti.d@example.com", "+919845002004");
+
+    seedWorker("Meera Nair", "meera.nair@example.com", "+919845001102", 19.1082, 72.8317);
+    seedWorker("Priya Sharma", "priya.s@example.com", "+919845001104", 19.0760, 72.8777);
+    seedWorker("Lakshmi Iyer", "lakshmi.i@example.com", "+919845001105", 18.9633, 72.8320);
+    seedWorker("Reena Kulkarni", "reena.k@example.com", "+919845001106", 19.1369, 72.8903);
+  }
+
+  private void seedCustomer(String name, String email, String phone) {
+    users.findByPhoneAndRole(phone, Role.CUSTOMER)
+        .orElseGet(() -> users.save(new UserAccount(name, email,
+            ENCODER.encode("demo-pass-" + System.currentTimeMillis()), phone, Role.CUSTOMER)));
+  }
+
+  private void seedWorker(String name, String email, String phone, double lat, double lng) {
+    if (users.findByPhoneAndRole(phone, Role.WORKER).isPresent()) {
+      return;
+    }
+    UserAccount worker = users.save(new UserAccount(name, email,
+        ENCODER.encode("demo-pass-" + System.currentTimeMillis()), phone, Role.WORKER));
+    WorkerProfile profile = new WorkerProfile(worker);
+    profile.acceptConsent();
+    profile.submitKyc("ref-" + worker.getId());
+    profile.submitPan("PAN" + worker.getId(), name, "ref-pan-" + worker.getId());
+    profile.submitSelfie("ref-selfie-" + worker.getId());
+    profile.submitAddress("Mumbai", "Mumbai", "Mumbai", "Maharashtra", "400001", "ref-addr-" + worker.getId());
+    profile.submitPoliceVerification("ref-police-" + worker.getId());
+    profile.setPayout("BANK", name, "7890", "HDFC0001234", name + "@upi");
+    profile.submitServiceReadiness("home-cleaning", "mumbai", "5 years experience", "anytime", true);
+    profile.approve();
+    profile.setAvailability(AvailabilityStatus.AVAILABLE);
+    profile.updateLocation(lat, lng);
+    workerProfiles.save(profile);
+  }
+
+  private void seedBookingsAndPayments() {
+    if (bookings.count() > 0) {
+      return;
+    }
+    List<UserAccount> customers = users.findAll().stream().filter(u -> u.getRole() == Role.CUSTOMER).toList();
+    List<UserAccount> workers = users.findAll().stream().filter(u -> u.getRole() == Role.WORKER).toList();
+    if (customers.isEmpty()) {
+      return;
+    }
+    log.info("Seeding demo bookings and payments…");
+    Instant now = Instant.now();
+    String[] services = {"Full Home Cleaning", "Deep Cleaning", "Kitchen Cleaning",
+        "Bathroom Cleaning", "Regular Housekeeping", "Balcony Cleaning"};
+    double[][] points = {
+        {19.0667, 72.8450}, {19.1082, 72.8317}, {19.0760, 72.8777},
+        {18.9633, 72.8320}, {19.1369, 72.8903}, {19.0193, 72.8460}};
+    String[] addresses = {
+        "Flat 402, Sea Breeze, Nerul", "Bungalow 12, Chandivali Farm Road", "Tower B-1204, Powai",
+        "2BHK, Colaba Causeway", "Flat 9, Mulund West", "Sector 5, Vashi"};
+    int[] paise = {69900, 129900, 89900, 149900, 189900, 119900};
+    BookingStatus[] statuses = {BookingStatus.REQUESTED, BookingStatus.SEARCHING,
+        BookingStatus.ASSIGNED, BookingStatus.ACCEPTED, BookingStatus.IN_PROGRESS, BookingStatus.COMPLETED};
+    UserAccount assignedWorker = workers.isEmpty() ? null : workers.get(0);
+
+    for (int i = 0; i < statuses.length; i++) {
+      UserAccount customer = customers.get(i % customers.size());
+      Booking b = new Booking(customer, services[i], addresses[i],
+          java.time.LocalDateTime.now().plusMinutes(30 + i * 25).toString(),
+          "400001", 60, "Standard", null, 0, "");
+      b.setPaymentAmountPaise(paise[i]);
+      b.setStatus(statuses[i]);
+      if (i >= 2 && assignedWorker != null) {
+        b.setWorker(assignedWorker);
+      }
+      bookings.save(b);
+    }
+
+    List<Booking> all = bookings.findAll();
+    for (Booking b : all) {
+      if (b.getStatus() == BookingStatus.COMPLETED) {
+        Payment p = new Payment(b, "TXN-DEMO-" + b.getId(), "UPI", b.getPaymentAmountPaise());
+        p.markPaid("Demo gateway capture");
+        payments.save(p);
+      } else if (b.getStatus() == BookingStatus.IN_PROGRESS) {
+        Payment p = new Payment(b, "TXN-DEMO-" + b.getId(), "CASH", b.getPaymentAmountPaise());
+        payments.save(p);
+      }
+    }
   }
 
   private void seedDisputes() {
@@ -188,94 +286,11 @@ public class DemoDataSeeder implements CommandLineRunner {
     partners.save(p);
   }
 
-  private void seedLiveBookings(Partner priya, Partner lakshmi, Partner reena) {
-    List<Customer> customers = this.customers.findAll();
-    List<ServiceOffering> services = this.services.findAll();
-    if (customers.isEmpty() || services.isEmpty()) return;
-
-    double[][] points = {
-        {19.0667, 72.8450}, {19.1082, 72.8317}, {19.0760, 72.8777},
-        {18.9633, 72.8320}, {19.1369, 72.8903}, {19.0193, 72.8460}};
-    String[] statuses = {"PENDING", "PENDING", "CONFIRMED", "CONFIRMED", "IN_PROGRESS", "IN_PROGRESS"};
-    Partner[] assigned = {null, null, priya, lakshmi, reena, priya};
-    BigDecimal[] amounts = {new BigDecimal("699"), new BigDecimal("1299"), new BigDecimal("899"),
-        new BigDecimal("1499"), new BigDecimal("1899"), new BigDecimal("1199")};
-    String[] addresses = {
-        "Flat 402, Sea Breeze, Nerul", "Bungalow 12, Chandivali Farm Road", "Tower B-1204, Powai",
-        "2BHK, Colaba Causeway", "Flat 9, Mulund West", "Sector 5, Vashi"};
-    Instant now = Instant.now();
-
-    for (int i = 0; i < statuses.length; i++) {
-      Booking b = new Booking();
-      b.setCustomer(customers.get(i % customers.size()));
-      b.setService(services.get(i % services.size()));
-      b.setPartner(assigned[i]);
-      b.setStatus(statuses[i]);
-      b.setAddress(addresses[i]);
-      b.setTotalAmount(amounts[i]);
-      b.setLatitude(points[i][0]);
-      b.setLongitude(points[i][1]);
-      b.setCreatedAt(now.minusSeconds((long) (90 + i * 17) * 60));
-      b.setScheduledAt(java.time.LocalDateTime.now().plusMinutes(30 + i * 25));
-      if ("IN_PROGRESS".equals(statuses[i])) {
-        b.setStartedAt(now.minusSeconds(45 * 60L + i * 7 * 60L));
-      }
-      bookings.save(b);
-    }
-  }
-
-  private void seedCompletedBooking(Partner partner) {
-    List<Customer> customers = this.customers.findAll();
-    List<ServiceOffering> services = this.services.findAll();
-    if (customers.isEmpty() || services.isEmpty()) return;
-    Booking b = new Booking();
-    b.setCustomer(customers.get(customers.size() - 1));
-    b.setService(services.get(services.size() % services.size()));
-    b.setPartner(partner);
-    b.setStatus("COMPLETED");
-    b.setAddress("Flat 12, Seawoods Grand Central, Navi Mumbai");
-    b.setTotalAmount(new BigDecimal("1599"));
-    b.setLatitude(19.0212);
-    b.setLongitude(73.0213);
-    Instant now = Instant.now();
-    b.setCreatedAt(now.minusSeconds(2 * 86400));
-    b.setStartedAt(now.minusSeconds(2 * 86400 + 3600));
-    b.setCompletedAt(now.minusSeconds(2 * 86400 + 7200));
-    bookings.save(b);
-  }
-
-  private void seedPayments() {
-    if (payments.count() > 0) return;
-    List<Booking> all = bookings.findAll();
-    if (all.isEmpty()) return;
-    String[] methods = {"CASH", "CARD", "ONLINE", "BANK_TRANSFER"};
-    int m = 0;
-    for (Booking b : all) {
-      String status;
-      switch (b.getStatus()) {
-        case "COMPLETED", "CONFIRMED", "IN_PROGRESS" -> status = "PAID";
-        default -> status = "PENDING";
-      }
-      if (b.getId() % 5 == 0) status = "FAILED";
-      Payment p = new Payment();
-      p.setBooking(b);
-      p.setAmount(b.getTotalAmount());
-      p.setMethod(methods[m++ % methods.length]);
-      p.setStatus(status);
-      p.setTransactionId("TXN" + System.currentTimeMillis() % 1000000000L + b.getId());
-      if ("PAID".equals(status)) {
-        p.setPaidAt(Instant.now().minusSeconds(3600L + b.getId() * 3600L));
-      }
-      payments.save(p);
-    }
-    log.info("Seeded {} demo payments", payments.count());
-  }
-
   private void seedSupportData() {
     List<Booking> all = bookings.findAll();
-    List<Customer> custs = customers.findAll();
+    List<UserAccount> custs = users.findAll().stream().filter(u -> u.getRole() == Role.CUSTOMER).toList();
     if (returns.count() == 0) {
-      List<Booking> done = all.stream().filter(b -> "COMPLETED".equals(b.getStatus())).toList();
+      List<Booking> done = all.stream().filter(b -> b.getStatus() == BookingStatus.COMPLETED).toList();
       if (!done.isEmpty()) {
         ReturnRequest r1 = new ReturnRequest();
         r1.setBookingId(done.get(0).getId());

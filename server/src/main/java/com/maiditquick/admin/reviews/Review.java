@@ -1,7 +1,7 @@
 package com.maiditquick.admin.reviews;
 
-import com.maiditquick.admin.bookings.Booking;
-import com.maiditquick.admin.customers.Customer;
+import com.makeitquick.booking.Booking;
+import com.makeitquick.security.UserAccount;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.OnDelete;
@@ -20,7 +20,7 @@ public class Review {
   @ManyToOne(fetch = FetchType.EAGER)
   @JoinColumn(name = "customer_id")
   @OnDelete(action = OnDeleteAction.SET_NULL)
-  private Customer customer;
+  private UserAccount customer;
   @ManyToOne(fetch = FetchType.EAGER)
   @JoinColumn(name = "booking_id")
   @OnDelete(action = OnDeleteAction.SET_NULL)

@@ -1,19 +1,21 @@
 package com.maiditquick.admin.escalations;
 
 import com.maiditquick.admin.audit.AuditService;
-import com.maiditquick.admin.bookings.Booking;
-import com.maiditquick.admin.bookings.BookingRepository;
 import com.maiditquick.admin.common.ApiResponse;
 import com.maiditquick.admin.common.NotFoundException;
 import com.maiditquick.admin.common.PageResponse;
-import com.maiditquick.admin.customers.Customer;
-import com.maiditquick.admin.customers.CustomerRepository;
 import com.maiditquick.admin.notifications.Notification;
 import com.maiditquick.admin.notifications.NotificationRepository;
-import com.maiditquick.admin.partners.Partner;
-import com.maiditquick.admin.partners.PartnerRepository;
-import com.maiditquick.admin.payments.Payment;
-import com.maiditquick.admin.payments.PaymentRepository;
+import com.makeitquick.booking.Booking;
+import com.makeitquick.booking.BookingRepository;
+import com.makeitquick.booking.BookingStatus;
+import com.makeitquick.payment.Payment;
+import com.makeitquick.payment.PaymentRepository;
+import com.makeitquick.security.Role;
+import com.makeitquick.security.UserAccount;
+import com.makeitquick.security.UserRepository;
+import com.makeitquick.worker.WorkerProfile;
+import com.makeitquick.worker.WorkerProfileRepository;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -33,6 +35,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -48,22 +51,23 @@ import java.util.UUID;
 public class BookingOverrideController {
 
   private final BookingRepository bookings;
-  private final PartnerRepository partners;
-  private final CustomerRepository customers;
+  private final UserRepository workers;
+  private final WorkerProfileRepository workerProfiles;
   private final PaymentRepository payments;
   private final DisputeRepository disputes;
   private final NotificationRepository notifications;
   private final AuditService audit;
   private final Path uploadDir;
 
-  public BookingOverrideController(BookingRepository bookings, PartnerRepository partners,
-                                   CustomerRepository customers, PaymentRepository payments,
+  public BookingOverrideController(BookingRepository bookings, UserRepository workers,
+                                   WorkerProfileRepository workerProfiles,
+                                   PaymentRepository payments,
                                    DisputeRepository disputes, NotificationRepository notifications,
                                    AuditService audit,
                                    @Value("${app.uploads-dir:uploads}") String uploadsDir) {
     this.bookings = bookings;
-    this.partners = partners;
-    this.customers = customers;
+    this.workers = workers;
+    this.workerProfiles = workerProfiles;
     this.payments = payments;
     this.disputes = disputes;
     this.notifications = notifications;
@@ -79,12 +83,11 @@ public class BookingOverrideController {
                                      @Valid @RequestBody CancelInput input,
                                      HttpServletRequest req) {
     Booking b = findBooking(id);
-    if ("COMPLETED".equals(b.getStatus())) {
+    if (b.getStatus() == BookingStatus.COMPLETED) {
       throw new IllegalArgumentException("Completed bookings cannot be cancelled");
     }
-    String before = b.getStatus();
-    b.setStatus("CANCELLED");
-    b.setUpdatedAt(Instant.now());
+    String before = b.getStatus().name();
+    b.cancel(input.reason() == null || input.reason().isBlank() ? "Cancelled by administrator" : input.reason());
     Booking saved = bookings.save(b);
     audit.record("BOOKING_CANCELLED_MANUAL", "ESCALATIONS", String.valueOf(id),
         "{\"status\":\"" + before + "\"}",
@@ -103,21 +106,17 @@ public class BookingOverrideController {
                                        @Valid @RequestBody ReassignInput input,
                                        HttpServletRequest req) {
     Booking b = findBooking(id);
-    Partner partner = partners.findById(input.newPartnerId())
-        .orElseThrow(() -> NotFoundException.of("Partner", input.newPartnerId()));
-    if (!"APPROVED".equals(partner.getKycStatus())) {
-      throw new IllegalArgumentException("Only approved partners can be assigned to a booking");
-    }
-    String before = b.getPartner() == null ? null : b.getPartner().getName();
-    b.setPartner(partner);
-    b.setUpdatedAt(Instant.now());
+    Long workerId = input.newWorkerId() != null ? input.newWorkerId() : input.newPartnerId();
+    UserAccount worker = resolveWorker(workerId);
+    String before = b.getWorker() == null ? null : b.getWorker().getName();
+    b.assign(worker);
     Booking saved = bookings.save(b);
     audit.record("BOOKING_REASSIGNED", "ESCALATIONS", String.valueOf(id),
-        "{\"partner\":\"" + (before == null ? "" : before) + "\"}",
-        "{\"partner\":\"" + partner.getName() + "\",\"newPartnerId\":" + partner.getId() + "}",
+        "{\"worker\":\"" + (before == null ? "" : before) + "\"}",
+        "{\"worker\":\"" + worker.getName() + "\",\"newWorkerId\":" + worker.getId() + "}",
         req);
     notify("Booking reassigned — #" + id,
-        "Booking #" + id + " was reassigned to " + partner.getName()
+        "Booking #" + id + " was reassigned to " + worker.getName()
             + (input.reason() == null || input.reason().isBlank() ? "." : " — " + input.reason()),
         "INFO");
     return ApiResponse.ok("Booking reassigned", saved);
@@ -129,55 +128,44 @@ public class BookingOverrideController {
                                      @Valid @RequestBody RefundInput input,
                                      HttpServletRequest req) {
     Booking b = findBooking(id);
-    BigDecimal total = b.getTotalAmount() == null ? BigDecimal.ZERO : b.getTotalAmount();
-    if (input.amount().compareTo(total) > 0) {
-      throw new IllegalArgumentException("Refund cannot exceed the booking amount " + total.toPlainString());
+    int totalPaise = b.getPaymentAmountPaise();
+    int refundPaise = toPaise(input.amount());
+    if (refundPaise > totalPaise) {
+      throw new IllegalArgumentException("Refund cannot exceed the booking amount "
+          + BigDecimal.valueOf(totalPaise, 2).toPlainString());
     }
-    Payment payment = new Payment();
-    payment.setBooking(b);
-    payment.setAmount(input.amount());
-    payment.setMethod("ONLINE");
-    payment.setStatus("REFUNDED");
-    payment.setTransactionId("REF-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
-    payment.setPaidAt(Instant.now());
+    Payment payment = new Payment(b,
+        "REF-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ROOT),
+        "ONLINE", refundPaise);
+    payment.markRefunded("Admin override");
     Payment saved = payments.save(payment);
-    String walletAfter = null;
-    if (b.getCustomer() != null) {
-      Customer c = b.getCustomer();
-      BigDecimal wallet = c.getWalletBalance() == null ? BigDecimal.ZERO : c.getWalletBalance();
-      wallet = wallet.add(input.amount());
-      c.setWalletBalance(wallet);
-      c.setUpdatedAt(Instant.now());
-      customers.save(c);
-      walletAfter = wallet.toPlainString();
-    }
     audit.record("BOOKING_REFUNDED", "ESCALATIONS", String.valueOf(id),
         "{\"amount\":\"" + input.amount().toPlainString() + "\"}",
-        "{\"paymentId\":" + saved.getId() + ",\"transactionId\":\"" + saved.getTransactionId()
-            + "\",\"walletBalance\":\"" + walletAfter + "\",\"reason\":\""
-            + (input.reason() == null ? "" : input.reason()) + "\"}",
+        "{\"paymentId\":" + saved.getId() + ",\"reference\":\"" + saved.getReference()
+            + "\",\"reason\":\"" + (input.reason() == null ? "" : input.reason()) + "\"}",
         req);
     notify("Refund issued — booking #" + id,
-        "₹" + input.amount().toPlainString() + " refunded to customer wallet"
+        "₹" + input.amount().toPlainString() + " refunded against the booking"
             + (input.reason() == null || input.reason().isBlank() ? "." : " — " + input.reason()),
         "SUCCESS");
     return ApiResponse.ok("Refund issued", saved);
   }
 
-  @GetMapping("/partners/nearby")
+  @GetMapping("/workers/nearby")
   @PreAuthorize("hasAuthority('OVERRIDES_WRITE')")
-  public ApiResponse<List<NearbyPartner>> nearby(
+  public ApiResponse<List<NearbyWorker>> nearby(
       @RequestParam double lat,
       @RequestParam double lng,
       @RequestParam(defaultValue = "0") long excludeId,
       @RequestParam(defaultValue = "5") int limit) {
     int max = Math.min(Math.max(limit, 1), 20);
-    return ApiResponse.ok(partners.findAll().stream()
-        .filter(p -> "APPROVED".equals(p.getKycStatus()))
-        .filter(p -> p.getId() == null || !p.getId().equals(excludeId))
-        .map(p -> new NearbyPartner(p.getId(), p.getName(), p.getPhone(),
-            haversineKm(lat, lng, p.getLatitude(), p.getLongitude())))
-        .sorted(Comparator.comparingDouble(NearbyPartner::distanceKm))
+    return ApiResponse.ok(workerProfiles.findAll().stream()
+        .filter(WorkerProfile::isReadyForJobs)
+        .filter(w -> w.getLastLatitude() != null && w.getLastLongitude() != null)
+        .filter(w -> !w.getUser().getId().equals(excludeId))
+        .map(w -> new NearbyWorker(w.getUser().getId(), w.getUser().getName(), w.getUser().getPhone(),
+            haversineKm(lat, lng, w.getLastLatitude(), w.getLastLongitude())))
+        .sorted(Comparator.comparingDouble(NearbyWorker::distanceKm))
         .limit(max)
         .toList());
   }
@@ -266,6 +254,27 @@ public class BookingOverrideController {
     return disputes.findById(id).orElseThrow(() -> NotFoundException.of("Dispute", id));
   }
 
+  private UserAccount resolveWorker(Long id) {
+    if (id == null) {
+      throw new IllegalArgumentException("A worker id is required");
+    }
+    UserAccount worker = workers.findById(id)
+        .orElseThrow(() -> NotFoundException.of("Worker", id));
+    if (worker.getRole() != Role.WORKER) {
+      throw new IllegalArgumentException("User " + id + " is not a worker");
+    }
+    WorkerProfile profile = workerProfiles.findByUser(worker)
+        .orElseThrow(() -> new IllegalArgumentException("Worker has no onboarding profile"));
+    if (!profile.isReadyForJobs()) {
+      throw new IllegalArgumentException("Only workers with approved KYC can be assigned to a booking");
+    }
+    return worker;
+  }
+
+  private int toPaise(BigDecimal rupees) {
+    return rupees.movePointRight(2).setScale(0, RoundingMode.HALF_UP).intValue();
+  }
+
   private double haversineKm(double lat1, double lng1, Double lat2, Double lng2) {
     if (lat2 == null || lng2 == null) return Double.MAX_VALUE;
     double r = 6371.0;
@@ -321,7 +330,7 @@ public class BookingOverrideController {
 
   public record CancelInput(@Size(max = 500) String reason) {}
 
-  public record ReassignInput(@NotNull Long newPartnerId, @Size(max = 500) String reason) {}
+  public record ReassignInput(Long newWorkerId, Long newPartnerId, @Size(max = 500) String reason) {}
 
   public record RefundInput(@NotNull @DecimalMin("0.01") BigDecimal amount,
                             @Size(max = 500) String reason) {}
@@ -333,5 +342,5 @@ public class BookingOverrideController {
 
   public record ResolveInput(@NotBlank @Size(max = 2000) String resolution) {}
 
-  public record NearbyPartner(Long id, String name, String phone, double distanceKm) {}
+  public record NearbyWorker(Long id, String name, String phone, double distanceKm) {}
 }

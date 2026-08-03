@@ -1,6 +1,6 @@
 package com.maiditquick.admin.escalations;
 
-import com.maiditquick.admin.bookings.Booking;
+import com.makeitquick.booking.Booking;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.Instant;

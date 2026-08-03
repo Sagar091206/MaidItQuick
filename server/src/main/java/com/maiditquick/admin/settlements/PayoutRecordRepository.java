@@ -1,6 +1,6 @@
 package com.maiditquick.admin.settlements;
 
-import com.maiditquick.admin.partners.Partner;
+import com.makeitquick.security.UserAccount;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
@@ -9,5 +9,5 @@ import java.util.Optional;
 public interface PayoutRecordRepository
     extends JpaRepository<PayoutRecord, Long>, JpaSpecificationExecutor<PayoutRecord> {
 
-  Optional<PayoutRecord> findByPartnerAndPeriodLabel(Partner partner, String periodLabel);
+  Optional<PayoutRecord> findByWorkerAndPeriodLabel(UserAccount worker, String periodLabel);
 }
