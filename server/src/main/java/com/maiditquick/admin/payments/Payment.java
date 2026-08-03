@@ -8,8 +8,8 @@ import org.hibernate.annotations.OnDeleteAction;
 import java.math.BigDecimal;
 import java.time.Instant;
 
-@Entity
-@Table(name = "payments")
+@Entity(name = "AdminPayment")
+@Table(name = "admin_payments")
 @Getter
 @Setter
 @NoArgsConstructor

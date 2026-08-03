@@ -14,13 +14,22 @@ import org.springframework.context.annotation.AnnotationBeanNameGenerator;
  * untouched. The prefix intentionally cannot equal a name the mobile module would
  * produce on its own (mobile classes named {@code Admin*} generate {@code admin*}
  * bean names), which is why a single word like {@code admin} is not enough.
+ *
+ * <p>Since Phase 2 (single JPA unit) the same generator also names the shared
+ * repository scan, so it only prefixes beans whose class lives under
+ * {@code com.maiditquick.admin} and lets everything else keep the default name.
  */
 public class AdminBeanNameGenerator extends AnnotationBeanNameGenerator {
 
     public static final String PREFIX = "adminModule";
+    private static final String ADMIN_PACKAGE = "com.maiditquick.admin";
 
     @Override
     protected String buildDefaultBeanName(BeanDefinition definition) {
+        String className = definition.getBeanClassName();
+        if (className == null || !className.startsWith(ADMIN_PACKAGE)) {
+            return super.buildDefaultBeanName(definition);
+        }
         String name = super.buildDefaultBeanName(definition);
         return name.isEmpty()
                 ? PREFIX
