@@ -14,6 +14,8 @@ public class Partner {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
+  @Column(name = "source_user_id", unique = true)
+  private Long sourceUserId;
   @Column(nullable = false, length = 160)
   private String name;
   @Column(nullable = false, unique = true, length = 40)
@@ -43,6 +45,12 @@ public class Partner {
   private String identityDocPath;
   @Column(name = "address_doc_path", length = 500)
   private String addressDocPath;
+  @Column(name = "pan_doc_path", length = 500)
+  private String panDocPath;
+  @Column(name = "pan_number", length = 20)
+  private String panNumber;
+  @Column(name = "pan_name", length = 160)
+  private String panName;
   @Column(name = "bank_account_holder", length = 160)
   private String bankAccountHolder;
   @Column(name = "bank_account_number", length = 40)
@@ -51,6 +59,8 @@ public class Partner {
   private String bankIfsc;
   @Column(name = "upi_id", length = 80)
   private String upiId;
+  @Column(name = "payout_status", nullable = false)
+  private String payoutStatus = "NOT_SUBMITTED";
   private Double latitude;
   private Double longitude;
   @Column(name = "created_at", nullable = false, updatable = false)

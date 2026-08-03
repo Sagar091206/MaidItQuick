@@ -38,16 +38,12 @@ registerModule("dashboard", async (el) => {
 async function loadDashboard(el) {
   el.innerHTML = `<div class="state-box"><div class="spinner-inline" style="width:34px;height:34px"></div></div>`;
   try {
-    const [kycCounts, liveBookings, activities] = await Promise.all([
+    const [kycCounts, liveBookings] = await Promise.all([
       loadKycCounts(),
       loadLiveBookings(),
-      loadActivities(),
     ]);
     renderKycQueue(el, kycCounts);
-    renderTodayOps(el);
     renderLiveBookings(el, liveBookings);
-    renderActivities(el, activities);
-    renderQuickActions(el);
   } catch (err) {
     el.innerHTML = `<div class="state-box">
       <div class="icon"><svg width="28" height="28"><use href="#i-error"/></svg></div>

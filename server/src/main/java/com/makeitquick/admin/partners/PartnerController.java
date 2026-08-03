@@ -36,19 +36,23 @@ public class PartnerController {
   private final AuditService audit;
   private final AdminNotificationRepository notifications;
   private final Path uploadDir;
+  private final LiveWorkerKycSyncService liveKycSync;
 
   public PartnerController(PartnerRepository partners, AuditService audit,
                            AdminNotificationRepository notifications,
-                           @Value("${app.uploads-dir:uploads}") String uploadsDir) {
+                           @Value("${app.uploads-dir:uploads}") String uploadsDir,
+                           LiveWorkerKycSyncService liveKycSync) {
     this.partners = partners;
     this.audit = audit;
     this.notifications = notifications;
     this.uploadDir = Paths.get(uploadsDir).toAbsolutePath().normalize();
+    this.liveKycSync = liveKycSync;
   }
 
   @GetMapping("/pending-count")
   @PreAuthorize("hasAuthority('PARTNERS_READ')")
   public ApiResponse<Long> pendingCount() {
+    liveKycSync.sync();
     return ApiResponse.ok(partners.countByKycStatusAndDeletedAtIsNull("PENDING"));
   }
 
@@ -60,6 +64,7 @@ public class PartnerController {
       @RequestParam(defaultValue = "") String deleted,
       @RequestParam(defaultValue = "0") @Min(0) int page,
       @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+    liveKycSync.sync();
     PageRequest pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
     Page<Partner> result = partners.findAll(listSpec(query, status, deleted), pageable);
     return ApiResponse.ok(PageResponse.from(result));
@@ -121,6 +126,7 @@ public class PartnerController {
   @PreAuthorize("hasAuthority('PARTNERS_WRITE')")
   public ApiResponse<Partner> approve(@PathVariable long id, HttpServletRequest req) {
     Partner p = find(id);
+    liveKycSync.approve(p);
     p.setKycStatus("APPROVED");
     p.setApprovedAt(Instant.now());
     p.setRejectionReason(null);
@@ -134,10 +140,27 @@ public class PartnerController {
     return ApiResponse.ok("Partner profile approved and partner app notified", saved);
   }
 
+  @PostMapping("/{id}/approve-payout")
+  @PreAuthorize("hasAuthority('PARTNERS_WRITE')")
+  public ApiResponse<Partner> approvePayout(@PathVariable long id, HttpServletRequest req) {
+    Partner p = find(id);
+    if (!"PENDING".equals(p.getPayoutStatus())) {
+      throw new IllegalArgumentException("Payout details must be submitted before approval");
+    }
+    liveKycSync.approvePayout(p);
+    p.setPayoutStatus("APPROVED");
+    p.setUpdatedAt(Instant.now());
+    Partner saved = partners.save(p);
+    audit.record("PARTNER_PAYOUT_APPROVED", "PARTNERS", String.valueOf(id), null,
+        "{\"payoutStatus\":\"APPROVED\"}", req);
+    return ApiResponse.ok("Payout details approved", saved);
+  }
+
   @PostMapping("/{id}/reject")
   @PreAuthorize("hasAuthority('PARTNERS_WRITE')")
   public ApiResponse<Partner> reject(@PathVariable long id, @Valid @RequestBody RejectInput input, HttpServletRequest req) {
     Partner p = find(id);
+    liveKycSync.reject(p);
     p.setKycStatus("REJECTED");
     p.setRejectionReason(input.reason().trim());
     p.setApprovedAt(null);

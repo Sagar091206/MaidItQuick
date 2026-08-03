@@ -264,7 +264,8 @@ public class AuthController {
                             HttpStatus.CONFLICT,
                             "A partner account already exists for this phone number. Sign in instead.");
                 });
-        UserAccount user = new UserAccount(challenge.getName(), "", encoder.encode(token()), phone, Role.WORKER);
+        String generatedEmail = "worker-" + phone.replaceAll("[^0-9]", "") + "@maiditquick.local";
+        UserAccount user = new UserAccount(challenge.getName(), generatedEmail, encoder.encode(token()), phone, Role.WORKER);
         user.setEmailNotifications(false);
         if (challenge.getGender() != null && !challenge.getGender().isBlank()) {
             user.setGender(challenge.getGender());

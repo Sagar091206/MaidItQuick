@@ -77,7 +77,9 @@ registerModule("kyc", (el) => {
   function docChips(p) {
     const idOk = p.identityDocPath ? `<span class="badge st-SUCCESS">${icon("i-check")} Identity</span>` : `<span class="badge st-WARNING">No identity doc</span>`;
     const addrOk = p.addressDocPath ? `<span class="badge st-SUCCESS">${icon("i-check")} Address</span>` : `<span class="badge st-WARNING">No address proof</span>`;
-    return `<div style="display:flex;gap:6px;flex-wrap:wrap">${idOk}${addrOk}</div>`;
+    const panOk = p.panDocPath ? `<span class="badge st-SUCCESS">${icon("i-check")} PAN</span>` : `<span class="badge st-WARNING">No PAN doc</span>`;
+    const payout = p.payoutStatus === "APPROVED" ? `<span class="badge st-SUCCESS">${icon("i-check")} Payout approved</span>` : p.payoutStatus === "PENDING" ? `<span class="badge st-WARNING">Payout pending</span>` : `<span class="badge st-WARNING">No payout details</span>`;
+    return `<div style="display:flex;gap:6px;flex-wrap:wrap">${idOk}${addrOk}${panOk}${payout}</div>`;
   }
 
   function renderTabs() {
@@ -200,24 +202,33 @@ registerModule("kyc", (el) => {
       <div class="doc-grid">
         ${docBox("Identity proof", p.identityDocPath, DOC_TYPE_LABEL[p.identityDocType] || p.identityDocType)}
         ${docBox("Address proof", p.addressDocPath, null)}
+        ${docBox("PAN proof", p.panDocPath, null)}
       </div>
       <h4 style="margin:16px 0 10px">Bank details</h4>
       <div class="kv-grid">
         <div class="kv"><span>Account holder</span><strong>${escapeHtml(p.bankAccountHolder || "—")}</strong></div>
+        <div class="kv"><span>PAN</span><strong class="mono">${escapeHtml(p.panNumber || "—")}</strong></div>
+        <div class="kv"><span>PAN name</span><strong>${escapeHtml(p.panName || "—")}</strong></div>
+        <div class="kv"><span>PAN</span><strong class="mono">${escapeHtml(p.panNumber || "—")}</strong></div>
+        <div class="kv"><span>PAN name</span><strong>${escapeHtml(p.panName || "—")}</strong></div>
         <div class="kv"><span>Account number</span><strong class="mono">${escapeHtml(p.bankAccountNumber || "—")}</strong></div>
         <div class="kv"><span>IFSC code</span><strong class="mono">${escapeHtml(p.bankIfsc || "—")}</strong></div>
         <div class="kv"><span>UPI ID</span><strong class="mono">${escapeHtml(p.upiId || "—")}</strong></div>
+        <div class="kv"><span>Payout status</span><strong>${badge(p.payoutStatus || "NOT_SUBMITTED")}</strong></div>
       </div>`;
     const canAct = canWrite && p.kycStatus !== "APPROVED";
+    const canApprovePayout = canWrite && p.payoutStatus === "PENDING";
     const footer = `
       <button class="btn btn-ghost" data-close>Close</button>
       ${canAct ? `<button class="btn btn-danger" data-reject>${icon("i-alert")} Reject</button>` : ""}
-      ${canAct ? `<button class="btn btn-primary" data-approve>${icon("i-check")} Approve</button>` : ""}`;
+      ${canAct ? `<button class="btn btn-primary" data-approve>${icon("i-check")} Approve</button>` : ""}
+      ${canApprovePayout ? `<button class="btn btn-primary" data-approve-payout>${icon("i-money")} Approve payout</button>` : ""}`;
     openModal({ title: `KYC review — ${p.name}`, body, footer, size: "lg" });
 
     const overlay = [...document.querySelectorAll(".modal-overlay")].at(-1);
     overlay.querySelector("[data-close]").addEventListener("click", closeTopModal);
     overlay.querySelector("[data-approve]")?.addEventListener("click", () => approve(p));
+    overlay.querySelector("[data-approve-payout]")?.addEventListener("click", () => approvePayout(p));
     overlay.querySelector("[data-reject]")?.addEventListener("click", () => reject(p));
     overlay.querySelector("[data-zoom]")?.addEventListener("click", () => {
       const src = overlay.querySelector("[data-zoom]").src;
@@ -240,6 +251,23 @@ registerModule("kyc", (el) => {
     try {
       await api.post(`/partners/${row.id}/approve`);
       toast(`${row.name} approved — partner app notified`, "success");
+      closeTopModal();
+      load();
+    } catch (err) {
+      toast(errorMessage(err), "error");
+    }
+  }
+
+  async function approvePayout(row) {
+    const ok = await confirmDialog({
+      title: `Approve payout for ${row.name}?`,
+      message: "This confirms the partner's bank or UPI details and unlocks going online after all checks are approved.",
+      confirmLabel: "Approve payout",
+    });
+    if (!ok) return;
+    try {
+      await api.post(`/partners/${row.id}/approve-payout`);
+      toast(`Payout approved for ${row.name}`, "success");
       closeTopModal();
       load();
     } catch (err) {

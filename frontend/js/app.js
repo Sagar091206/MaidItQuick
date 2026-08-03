@@ -131,7 +131,7 @@ export function openModal({ title, body, footer, size = "" }) {
     overlay.addEventListener("click", (e) => {
       if (e.target === overlay) close();
     });
-    overlay.querySelector("[data-close]").addEventListener("click", close);
+    overlay.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", close));
     document.body.style.overflow = "hidden";
     overlay._close = close;
     // resolve handles for footer buttons

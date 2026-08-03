@@ -21,6 +21,26 @@ class PartnerRepository {
         token: token,
       ));
 
+  Future<Map<String, dynamic>> setServiceAreas(
+          String token, String locations) =>
+      _asMap(_api.post('/workers/me/service-areas', {'locations': locations},
+          token: token));
+
+  Future<Map<String, dynamic>> setWorkingHours(
+    String token, {
+    required String days,
+    required String startTime,
+    required String endTime,
+  }) =>
+      _asMap(_api.post(
+          '/workers/me/working-hours',
+          {
+            'days': days,
+            'startTime': startTime,
+            'endTime': endTime,
+          },
+          token: token));
+
   Future<Map<String, dynamic>> acceptConsent(
     String token, {
     bool accepted = true,

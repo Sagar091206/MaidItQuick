@@ -46,6 +46,7 @@ public class BookingAssignmentService {
         List<WorkerProfile> candidates = profiles.findAll().stream()
                 .filter(WorkerProfile::isReadyForJobs)
                 .filter(profile -> profile.getAvailability() == AvailabilityStatus.AVAILABLE)
+                .filter(WorkerProfile::isWorkingNow)
                 .filter(profile -> bookings.findByWorkerIdAndStatusIn(profile.getUser().getId(), ACTIVE_STATUSES).isEmpty())
                 .filter(profile -> coversServices(profile, services))
                 .sorted(Comparator
@@ -59,12 +60,12 @@ public class BookingAssignmentService {
 
     /**
      * Assigns the best available worker and notifies both sides.
-     * Only runs while the booking is still unassigned (REQUESTED), so it can be
+     * Only runs while the booking is still unassigned (REQUESTED or SEARCHING), so it can be
      * safely triggered after payment without double-assigning.
      */
     public Optional<UserAccount> assignBest(Booking b, List<String> services,
                                             NotificationService notifications) {
-        if (b.getStatus() != BookingStatus.REQUESTED) return Optional.empty();
+        if (b.getStatus() != BookingStatus.REQUESTED && b.getStatus() != BookingStatus.SEARCHING) return Optional.empty();
         Optional<UserAccount> best = findBestWorker(services, b.getPinCode());
         if (best.isEmpty()) return Optional.empty();
         UserAccount worker = best.get();

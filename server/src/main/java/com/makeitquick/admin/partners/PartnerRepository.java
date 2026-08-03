@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface PartnerRepository extends JpaRepository<Partner, Long>, JpaSpecificationExecutor<Partner> {
+  java.util.Optional<Partner> findBySourceUserId(Long sourceUserId);
   boolean existsByPhone(String phone);
   boolean existsByPhoneAndIdNot(String phone, Long id);
   long countByKycStatus(String status);
