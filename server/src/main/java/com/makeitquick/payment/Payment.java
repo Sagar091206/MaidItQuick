@@ -57,4 +57,14 @@ public class Payment {
         this.gatewayResponse = gatewayResponse;
         this.completedAt = Instant.now();
     }
+
+    public void markRefunded(String gatewayResponse) {
+        this.status = PaymentStatus.REFUNDED;
+        this.gatewayResponse = gatewayResponse;
+        this.completedAt = Instant.now();
+    }
+
+    public void setStatus(PaymentStatus value) {
+        this.status = value;
+    }
 }

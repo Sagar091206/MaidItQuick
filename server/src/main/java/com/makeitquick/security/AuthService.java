@@ -7,7 +7,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -25,16 +25,18 @@ public class AuthService {
     private final UserRepository users;
     private final SessionRepository sessions;
     private final PartnerOtpRepository partnerOtps;
-    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
+    private final PasswordEncoder encoder;
     private final SecureRandom random = new SecureRandom();
 
     @org.springframework.beans.factory.annotation.Value("${app.sms.enabled:false}")
     private boolean smsEnabled;
 
-    AuthService(UserRepository users, SessionRepository sessions, PartnerOtpRepository partnerOtps) {
+    AuthService(UserRepository users, SessionRepository sessions, PartnerOtpRepository partnerOtps,
+                PasswordEncoder encoder) {
         this.users = users;
         this.sessions = sessions;
         this.partnerOtps = partnerOtps;
+        this.encoder = encoder;
     }
 
     public Map<String, Object> startCustomerLogin(String rawPhone) {

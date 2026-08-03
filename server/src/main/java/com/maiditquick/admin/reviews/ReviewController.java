@@ -1,13 +1,13 @@
 package com.maiditquick.admin.reviews;
 
 import com.maiditquick.admin.audit.AuditService;
-import com.maiditquick.admin.bookings.Booking;
-import com.maiditquick.admin.bookings.BookingRepository;
 import com.maiditquick.admin.common.ApiResponse;
 import com.maiditquick.admin.common.NotFoundException;
 import com.maiditquick.admin.common.PageResponse;
-import com.maiditquick.admin.customers.Customer;
-import com.maiditquick.admin.customers.CustomerRepository;
+import com.makeitquick.booking.Booking;
+import com.makeitquick.booking.BookingRepository;
+import com.makeitquick.security.UserAccount;
+import com.makeitquick.security.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -22,11 +22,11 @@ import org.springframework.web.bind.annotation.*;
 public class ReviewController {
 
   private final ReviewRepository reviews;
-  private final CustomerRepository customers;
+  private final UserRepository customers;
   private final BookingRepository bookings;
   private final AuditService audit;
 
-  public ReviewController(ReviewRepository reviews, CustomerRepository customers,
+  public ReviewController(ReviewRepository reviews, UserRepository customers,
                           BookingRepository bookings, AuditService audit) {
     this.reviews = reviews;
     this.customers = customers;
@@ -104,7 +104,7 @@ public class ReviewController {
     return reviews.findById(id).orElseThrow(() -> NotFoundException.of("Review", id));
   }
 
-  private Customer resolveCustomer(Long id) {
+  private UserAccount resolveCustomer(Long id) {
     if (id == null) {
       return null;
     }

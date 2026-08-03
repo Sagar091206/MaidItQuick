@@ -1,6 +1,6 @@
 package com.maiditquick.admin.settlements;
 
-import com.maiditquick.admin.partners.Partner;
+import com.makeitquick.security.UserAccount;
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
@@ -16,8 +16,8 @@ public class PayoutRecord {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
   @ManyToOne(fetch = FetchType.EAGER, optional = false)
-  @JoinColumn(name = "partner_id")
-  private Partner partner;
+  @JoinColumn(name = "worker_id")
+  private UserAccount worker;
   @Column(name = "period_label", nullable = false, length = 40)
   private String periodLabel;
   @Column(nullable = false)

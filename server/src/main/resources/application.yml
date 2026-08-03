@@ -64,6 +64,9 @@ app:
     password: ${APP_ADMIN_PASSWORD:}
   # ---- admin web module (Phase 1 merged into this process) ----
   jwt:
+    # Signing secret for admin access tokens. Must be distinct from the mobile
+    # app.security.jwt-secret (enforced at startup by JwtSecretGuard) so admin
+    # and mobile tokens cannot be replayed across realms. >= 32 chars.
     secret: ${ADMIN_JWT_SECRET:mySuperSecretKeyThatIsAtLeast32CharactersLong123}
     access-minutes: 15
     refresh-days: 7

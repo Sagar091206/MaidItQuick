@@ -12,7 +12,7 @@ import jakarta.validation.constraints.*;
 import java.security.SecureRandom;
 import java.util.*;
 import org.springframework.http.*;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -32,13 +32,14 @@ public class BookingController {
     private final ServiceCatalogService catalog;
     private final BookingAssignmentService assigner;
     private final BookingPricingService pricing;
-    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
+    private final PasswordEncoder encoder;
     private final SecureRandom random = new SecureRandom();
 
     BookingController(BookingRepository r, BookingServiceRepository bs, BookingEventRepository events,
                       SessionResolver resolver, UserRepository users, NotificationService n, WorkerSafetyService w,
                       RefundService refunds, ServiceAreaService areas, ServiceCatalogService catalog,
-                      BookingAssignmentService assigner, BookingPricingService pricing) {
+                      BookingAssignmentService assigner, BookingPricingService pricing,
+                      PasswordEncoder encoder) {
         repo = r;
         bookingServices = bs;
         bookingEvents = events;
@@ -51,6 +52,7 @@ public class BookingController {
         this.catalog = catalog;
         this.assigner = assigner;
         this.pricing = pricing;
+        this.encoder = encoder;
     }
 
     private UserAccount me(String h) {

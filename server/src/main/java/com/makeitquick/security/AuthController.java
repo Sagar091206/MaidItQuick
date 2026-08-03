@@ -13,7 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -32,7 +32,7 @@ public class AuthController {
     private final PartnerOtpRepository partnerOtps;
     private final SessionResolver resolver;
     private final JwtService jwt;
-    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
+    private final PasswordEncoder encoder;
     private final SecureRandom random = new SecureRandom();
 
     @Value("${app.sms.enabled:false}")
@@ -52,6 +52,7 @@ public class AuthController {
             PartnerOtpRepository o,
             SessionResolver resolver,
             JwtService jwt,
+            PasswordEncoder encoder,
             ObjectProvider<JavaMailSender> mailSender) {
         this.auth = auth;
         users = u;
@@ -60,6 +61,7 @@ public class AuthController {
         partnerOtps = o;
         this.resolver = resolver;
         this.jwt = jwt;
+        this.encoder = encoder;
         this.mailSender = mailSender;
     }
 

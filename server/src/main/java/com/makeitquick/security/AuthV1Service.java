@@ -15,7 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -48,12 +48,12 @@ public class AuthV1Service {
     private final int maxSends;
     private final Duration sendWindow;
     private final boolean devOtpEcho;
-    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(12);
+    private final PasswordEncoder encoder;
     private final SecureRandom random = new SecureRandom();
 
     AuthV1Service(UserRepository users, PartnerOtpRepository partnerOtps,
                   PendingRegistrationRepository pendingRegistrations, OtpRateLimiter rateLimiter,
-                  AuthService auth, JwtService jwt, SmsSender sms,
+                  AuthService auth, JwtService jwt, SmsSender sms, PasswordEncoder encoder,
                   @Value("${app.security.otp.expiry-seconds:60}") long otpExpirySeconds,
                   @Value("${app.security.otp.max-attempts:5}") int maxAttempts,
                   @Value("${app.security.otp.max-sends:4}") int maxSends,
@@ -71,6 +71,7 @@ public class AuthV1Service {
         this.maxSends = maxSends;
         this.sendWindow = Duration.ofMinutes(sendWindowMinutes);
         this.devOtpEcho = !smsEnabled;
+        this.encoder = encoder;
     }
 
     /**
