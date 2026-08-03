@@ -198,24 +198,24 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen>
   /// Formats a rupee amount. Numeric values are treated as rupees; strings
   /// that already carry a currency symbol are returned unchanged.
   String _money(dynamic value) {
-    if (value == null) return 'Ã¢â€šÂ¹0';
+    if (value == null) return '\u20B90';
 
     if (value is num) {
       final amount = value < 0 ? value.abs() : value;
       final digits = amount % 1 == 0 ? 0 : 2;
-      return 'Ã¢â€šÂ¹${amount.toStringAsFixed(digits)}';
+      return '\u20B9${amount.toStringAsFixed(digits)}';
     }
 
     final text = value.toString().trim();
-    if (text.isEmpty) return 'Ã¢â€šÂ¹0';
-    return text.startsWith('Ã¢â€šÂ¹') ? text : 'Ã¢â€šÂ¹$text';
+    if (text.isEmpty) return '\u20B90';
+    return text.startsWith('\u20B9') ? text : '\u20B9$text';
   }
 
   /// Converts a paise value (the API's canonical money unit) to rupees.
   String _paise(dynamic value) {
-    if (value == null) return 'Ã¢â€šÂ¹0';
+    if (value == null) return '\u20B90';
     final paise = value is num ? value : double.tryParse(value.toString());
-    if (paise == null) return 'Ã¢â€šÂ¹0';
+    if (paise == null) return '\u20B90';
     return _money(paise / 100);
   }
 
@@ -231,7 +231,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen>
     for (final key in paiseKeys) {
       if (data[key] != null) return _paise(data[key]);
     }
-    return 'Ã¢â€šÂ¹0';
+    return '\u20B90';
   }
 
   String _nextBooking(List<Map<String, dynamic>> bookings) {

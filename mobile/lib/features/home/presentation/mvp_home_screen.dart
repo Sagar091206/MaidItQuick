@@ -576,15 +576,15 @@ class _ServiceCard extends StatelessWidget {
 
   static String emojiFor(String name) {
     final n = name.toLowerCase();
-    if (n.contains('bath')) return 'Ã°Å¸â€ºÂ';
-    if (n.contains('kitchen')) return 'Ã°Å¸ÂÂ³';
-    if (n.contains('bed')) return 'Ã°Å¸â€ºÂÃ¯Â¸Â';
-    if (n.contains('balcony')) return 'Ã°Å¸ÂªÂ´';
-    if (n.contains('living')) return 'Ã°Å¸â€ºâ€¹Ã¯Â¸Â';
-    if (n.contains('deep') || n.contains('full')) return 'Ã¢Å“Â¨';
-    if (n.contains('dust')) return 'Ã°Å¸Â§Â¹';
-    if (n.contains('window')) return 'Ã°Å¸ÂªÅ¸';
-    return 'Ã°Å¸Â§Â½';
+    if (n.contains('bath')) return '\u{1F6C1}';
+    if (n.contains('kitchen')) return '\u{1F373}';
+    if (n.contains('bed')) return '\u{1F6CF}';
+    if (n.contains('balcony')) return '\u{1FAB4}';
+    if (n.contains('living')) return '\u{1F6CB}';
+    if (n.contains('deep') || n.contains('full')) return '\u2728';
+    if (n.contains('dust')) return '\u{1F9F9}';
+    if (n.contains('window')) return '\u{1FA9F}';
+    return '\u{1F9FD}';
   }
 
   @override
@@ -600,7 +600,7 @@ class _ServiceCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                service.emoji.isEmpty ? emojiFor(service.name) : service.emoji,
+                emojiFor(service.name),
                 style: const TextStyle(fontSize: 34),
               ),
               const Spacer(),
@@ -658,7 +658,7 @@ class _ActiveBookingHero extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              '${formatDateTime(booking.scheduledFor)} Ã‚Â· ${booking.durationMinutes} min',
+              '${formatDateTime(booking.scheduledFor)} \\u00B7 ${booking.durationMinutes} min',
               style: TextStyle(color: context.brandMuted),
             ),
             const SizedBox(height: 12),
