@@ -12,6 +12,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.time.DayOfWeek;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.util.Locale;
 
 @Entity
 @Table(name = "worker_profiles")
@@ -61,6 +65,9 @@ public class WorkerProfile {
     private String workLocations;
     private String experienceSummary;
     private String availabilitySummary;
+    private String workingDays;
+    private String workingStartTime;
+    private String workingEndTime;
     private boolean partnerCodeAccepted;
     private Instant serviceReadinessSubmittedAt;
     private Double lastLatitude;
@@ -91,6 +98,9 @@ public class WorkerProfile {
     public String getState() { return state; }
     public String getPinCode() { return pinCode; }
     public boolean hasAddressProof() { return addressDocumentRef != null && !addressDocumentRef.isBlank(); }
+    public String getIdentityDocumentRef() { return identityDocumentRef; }
+    public String getPanDocumentRef() { return panDocumentRef; }
+    public String getAddressDocumentRef() { return addressDocumentRef; }
     public String getPayoutMethod() { return payoutMethod; }
     public String getPayoutAccountHolderName() { return payoutAccountHolderName; }
     public String getBankAccountLast4() { return bankAccountLast4; }
@@ -101,6 +111,9 @@ public class WorkerProfile {
     public String getWorkLocations() { return workLocations; }
     public String getExperienceSummary() { return experienceSummary; }
     public String getAvailabilitySummary() { return availabilitySummary; }
+    public String getWorkingDays() { return workingDays; }
+    public String getWorkingStartTime() { return workingStartTime; }
+    public String getWorkingEndTime() { return workingEndTime; }
     public boolean isPartnerCodeAccepted() { return partnerCodeAccepted; }
     public Instant getServiceReadinessSubmittedAt() { return serviceReadinessSubmittedAt; }
     public Double getLastLatitude() { return lastLatitude; }
@@ -179,6 +192,7 @@ public class WorkerProfile {
         addressStatus = VerificationStatus.APPROVED;
         backgroundCheckStatus = VerificationStatus.APPROVED;
         payoutDetailsVerified = true;
+        partnerCodeAccepted = true;
     }
 
     public void reject() {
@@ -212,6 +226,11 @@ public class WorkerProfile {
                 && partnerCodeAccepted;
     }
 
+    public void approvePayoutDetails() {
+        if (!hasPayoutDetails()) throw new IllegalStateException("Payout details have not been submitted");
+        payoutDetailsVerified = true;
+    }
+
     public boolean hasPayoutDetails() {
         return payoutMethod != null && !payoutMethod.isBlank() && payoutAccountHolderName != null && !payoutAccountHolderName.isBlank();
     }
@@ -224,9 +243,39 @@ public class WorkerProfile {
                 && pinCode != null && !pinCode.isBlank();
     }
 
+    public void setWorkLocations(String locations) {
+        workLocations = locations;
+    }
+
+    public void setWorkingHours(String days, String startTime, String endTime) {
+        workingDays = days;
+        workingStartTime = startTime;
+        workingEndTime = endTime;
+    }
+
+    public boolean isWorkingNow() {
+        if (workingDays == null || workingDays.isBlank() || workingStartTime == null || workingEndTime == null) return true;
+        try {
+            var now = java.time.ZonedDateTime.now(ZoneId.of("Asia/Kolkata"));
+            String day = now.getDayOfWeek().name().toLowerCase(Locale.ROOT);
+            boolean scheduledToday = java.util.Arrays.stream(workingDays.toLowerCase(Locale.ROOT).split("[,/;]"))
+                    .map(String::trim).anyMatch(value -> value.equals(day) || value.startsWith(day.substring(0, 3)));
+            if (!scheduledToday) return false;
+            LocalTime start = LocalTime.parse(workingStartTime);
+            LocalTime end = LocalTime.parse(workingEndTime);
+            LocalTime current = now.toLocalTime();
+            return end.isAfter(start)
+                    ? !current.isBefore(start) && !current.isAfter(end)
+                    : !current.isBefore(start) || !current.isAfter(end);
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
     public void setAvailability(AvailabilityStatus value) {
         availability = value;
     }
+
 
     public void updateLocation(double latitude, double longitude) {
         lastLatitude = latitude;

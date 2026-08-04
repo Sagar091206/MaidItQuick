@@ -157,6 +157,112 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen>
     }
   }
 
+  Future<void> _openAvailabilitySettings() async {
+    final data = _dashboard ?? const <String, dynamic>{};
+    final areas =
+        TextEditingController(text: (data['workLocations'] ?? '').toString());
+    final days = TextEditingController(
+        text: (data['workingDays'] ??
+                'monday,tuesday,wednesday,thursday,friday,saturday')
+            .toString());
+    final start = TextEditingController(
+        text: (data['workingStartTime'] ?? '09:00').toString());
+    final end = TextEditingController(
+        text: (data['workingEndTime'] ?? '18:00').toString());
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => Padding(
+        padding: EdgeInsets.fromLTRB(
+            20, 8, 20, MediaQuery.viewInsetsOf(context).bottom + 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Availability settings',
+                style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 6),
+            const Text(
+                'Only bookings in these PIN areas and working hours will be matched to you.',
+                style: TextStyle(color: BrandColors.muted)),
+            const SizedBox(height: 14),
+            TextField(
+                controller: areas,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                    labelText: 'Service-area PIN codes',
+                    hintText: 'e.g. 400001, 400002')),
+            const SizedBox(height: 12),
+            TextField(
+                controller: days,
+                decoration: const InputDecoration(
+                    labelText: 'Working days', hintText: 'monday,tuesday,...')),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(
+                  child: TextField(
+                      controller: start,
+                      keyboardType: TextInputType.datetime,
+                      decoration: const InputDecoration(
+                          labelText: 'Start time', hintText: '09:00'))),
+              const SizedBox(width: 12),
+              Expanded(
+                  child: TextField(
+                      controller: end,
+                      keyboardType: TextInputType.datetime,
+                      decoration: const InputDecoration(
+                          labelText: 'End time', hintText: '18:00'))),
+            ]),
+            const SizedBox(height: 18),
+            FilledButton(
+                onPressed: () {
+                  if (areas.text.trim().isEmpty ||
+                      days.text.trim().isEmpty ||
+                      !RegExp(r'^([01]\d|2[0-3]):[0-5]\d$')
+                          .hasMatch(start.text) ||
+                      !RegExp(r'^([01]\d|2[0-3]):[0-5]\d$')
+                          .hasMatch(end.text)) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Enter PIN areas and times as HH:MM.')));
+                    return;
+                  }
+                  Navigator.of(context).pop(true);
+                },
+                child: const Text('Save availability')),
+          ],
+        ),
+      ),
+    );
+    if (saved != true) {
+      areas.dispose();
+      days.dispose();
+      start.dispose();
+      end.dispose();
+      return;
+    }
+    try {
+      final areaResult = await _partnerRepository.setServiceAreas(
+          widget.session.token, areas.text.trim());
+      final hoursResult = await _partnerRepository.setWorkingHours(
+          widget.session.token,
+          days: days.text.trim(),
+          startTime: start.text.trim(),
+          endTime: end.text.trim());
+      if (!mounted) return;
+      setState(
+          () => _dashboard = {...?_dashboard, ...areaResult, ...hoursResult});
+      _showMessage('Availability settings saved.');
+    } on ApiException catch (error) {
+      _showMessage(error.message);
+    } finally {
+      areas.dispose();
+      days.dispose();
+      start.dispose();
+      end.dispose();
+    }
+  }
+
   bool get _eligible {
     final applicationStatus = (_dashboard?['applicationStatus'] ??
             _dashboard?['approvalStatus'] ??
@@ -409,6 +515,19 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen>
                         _EligibilityCard(
                           eligible: _eligible,
                           online: _online,
+                        ),
+                        const SizedBox(height: 12),
+                        Card(
+                          child: ListTile(
+                            leading: const Icon(Icons.schedule_outlined),
+                            title:
+                                const Text('Service areas and working hours'),
+                            subtitle: Text(
+                                '${data['workLocations'] ?? 'Set PIN areas'} - ${data['workingStartTime'] ?? 'Set hours'} to ${data['workingEndTime'] ?? ''}'),
+                            trailing: TextButton(
+                                onPressed: _openAvailabilitySettings,
+                                child: const Text('Edit')),
+                          ),
                         ),
                         if (_error != null) ...[
                           const SizedBox(height: 12),

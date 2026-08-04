@@ -185,6 +185,24 @@ public class WorkerSafetyController {
         return view(profiles.save(profile));
     }
 
+    @PostMapping("/me/service-areas")
+    public Map<String, Object> setServiceAreas(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @Valid @RequestBody ServiceAreasInput input) {
+        WorkerProfile profile = profileForWorker(requireUser(authorization));
+        profile.setWorkLocations(input.locations().trim());
+        return view(profiles.save(profile));
+    }
+
+    @PostMapping("/me/working-hours")
+    public Map<String, Object> setWorkingHours(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @Valid @RequestBody WorkingHoursInput input) {
+        WorkerProfile profile = profileForWorker(requireUser(authorization));
+        profile.setWorkingHours(input.days().trim(), input.startTime(), input.endTime());
+        return view(profiles.save(profile));
+    }
+
     @PostMapping("/me/location")
     public Map<String, Object> updateLocation(
             @RequestHeader(value = "Authorization", required = false) String authorization,
@@ -193,6 +211,7 @@ public class WorkerSafetyController {
         profile.updateLocation(input.latitude(), input.longitude());
         return view(profiles.save(profile));
     }
+
 
     @GetMapping
     public List<Map<String, Object>> listWorkers(
@@ -301,7 +320,21 @@ public class WorkerSafetyController {
         view.put("workLocations", profile.getWorkLocations());
         view.put("experienceSummary", profile.getExperienceSummary());
         view.put("availabilitySummary", profile.getAvailabilitySummary());
+        view.put("workingDays", profile.getWorkingDays());
+        view.put("workingStartTime", profile.getWorkingStartTime());
+        view.put("workingEndTime", profile.getWorkingEndTime());
         view.put("readyForJobs", profile.isReadyForJobs());
+        String applicationStatus = profile.isReadyForJobs() ? "APPROVED"
+                : profile.hasSubmittedApprovalPack() ? "UNDER_REVIEW" : "INCOMPLETE";
+        int stageIndex = profile.isReadyForJobs() ? 6
+                : profile.hasPayoutDetails() ? 4
+                : profile.hasAddressDetails() ? 2
+                : profile.isConsentAccepted() ? 1 : 0;
+        view.put("applicationStatus", applicationStatus);
+        view.put("outcome", applicationStatus);
+        view.put("stageIndex", stageIndex);
+        view.put("lastUpdatedAt", profile.getServiceReadinessSubmittedAt() != null
+                ? profile.getServiceReadinessSubmittedAt() : profile.getConsentAcceptedAt());
         view.put("latitude", profile.getLastLatitude());
         view.put("longitude", profile.getLastLongitude());
         view.put("locationUpdatedAt", profile.getLocationUpdatedAt());
@@ -351,6 +384,10 @@ public class WorkerSafetyController {
         }
     }
     record AvailabilityInput(AvailabilityStatus status) {}
+    record ServiceAreasInput(@NotBlank String locations) {}
+    record WorkingHoursInput(@NotBlank String days, @NotBlank @Pattern(regexp = "^([01]\\d|2[0-3]):[0-5]\\d$") String startTime,
+                             @NotBlank @Pattern(regexp = "^([01]\\d|2[0-3]):[0-5]\\d$") String endTime) {}
+
     record LocationInput(@DecimalMin("-90.0") @DecimalMax("90.0") double latitude,
                          @DecimalMin("-180.0") @DecimalMax("180.0") double longitude) {}
 }

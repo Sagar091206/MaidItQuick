@@ -255,11 +255,12 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
     final accountNumber =
         _accountNumber.text.replaceAll(RegExp(r'\s+'), '').trim();
 
+    final ifsc = _ifsc.text.trim().toUpperCase();
     if (_payoutMethod == 'BANK' &&
         (!RegExp(r'^\d{9,18}$').hasMatch(accountNumber) ||
-            _ifsc.text.trim().isEmpty)) {
+            !RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$').hasMatch(ifsc))) {
       _showMessage(
-        'Enter a valid 9 to 18 digit account number and IFSC code.',
+        'Enter a valid 9 to 18 digit account number and 11-character IFSC code.',
       );
       return;
     }
@@ -273,7 +274,7 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
         method: _payoutMethod,
         accountHolderName: _accountHolderName.text.trim(),
         accountNumber: accountNumber,
-        ifsc: _ifsc.text.trim().toUpperCase(),
+        ifsc: ifsc,
         upiId: _upiId.text.trim(),
       );
       if (mounted) {
