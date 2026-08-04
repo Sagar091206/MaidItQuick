@@ -10,7 +10,7 @@ import 'api_config.dart';
 /// A small API wrapper used by the mobile MVP.
 ///
 /// It logs request paths and response codes only in debug builds. Session
-/// tokens and passwords are intentionally never written to Logcat.
+/// tokens and passwords are intentionally never written to logs.
 class ApiClient {
   ApiClient({http.Client? client}) : _client = client ?? http.Client();
 
@@ -33,6 +33,7 @@ class ApiClient {
   }) async {
     final url = _url(path);
     _logRequest('POST', url);
+
     final response = await _send(
       () => _client.post(
         url,
@@ -41,6 +42,7 @@ class ApiClient {
       ),
       url,
     );
+
     return _decode(response, 'POST', url);
   }
 
@@ -51,6 +53,7 @@ class ApiClient {
   }) async {
     final url = _url(path);
     _logRequest('PUT', url);
+
     final response = await _send(
       () => _client.put(
         url,
@@ -59,14 +62,17 @@ class ApiClient {
       ),
       url,
     );
+
     return _decode(response, 'PUT', url);
   }
 
   Future<dynamic> delete(String path, {String? token}) async {
     final url = _url(path);
     _logRequest('DELETE', url);
+
     final response =
         await _send(() => _client.delete(url, headers: _headers(token)), url);
+
     return _decode(response, 'DELETE', url);
   }
 
@@ -81,6 +87,7 @@ class ApiClient {
   }) async {
     final url = _url(path);
     _logRequest('POST multipart', url);
+
     final request = http.MultipartRequest('POST', url)
       ..headers.addAll({'Authorization': 'Bearer $token'})
       ..fields.addAll(fields)
@@ -92,36 +99,56 @@ class ApiClient {
           contentType: _mediaType(mimeType),
         ),
       );
+
     final streamed = await _send(() => request.send(), url);
     final response = await http.Response.fromStream(streamed);
+
     return _decode(response, 'POST multipart', url);
   }
 
   Uri _url(String path) => Uri.parse('${ApiConfig.baseUrl}$path');
 
   Future<T> _send<T extends http.BaseResponse>(
-      Future<T> Function() request, Uri url) async {
+    Future<T> Function() request,
+    Uri url,
+  ) async {
     try {
       return await request().timeout(_requestTimeout);
     } on TimeoutException {
       _logResponse('TIMEOUT', url, 408);
       throw ApiException(
-          'The server took too long to respond. Please try again.', 408);
-    } on http.ClientException {
+        'The server took too long to respond. Please try again.',
+        408,
+      );
+    } on http.ClientException catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('========== API ERROR ==========');
+        debugPrint('URL: $url');
+        debugPrint('Exception: $e');
+        debugPrint(stackTrace.toString());
+        debugPrint('===============================');
+      }
+
       _logResponse('NETWORK', url, 0);
+
       throw ApiException(
-          'Cannot reach the server. Check your connection and try again.', 0);
+        'Cannot reach the server. Check your connection and try again.',
+        0,
+      );
     }
   }
 
   Map<String, String> _headers(String? token) => {
         'Content-Type': 'application/json',
-        if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+        if (token != null && token.isNotEmpty)
+          'Authorization': 'Bearer $token',
       };
 
   dynamic _decode(http.Response response, String method, Uri url) {
     _logResponse(method, url, response.statusCode);
+
     dynamic payload;
+
     if (response.body.isEmpty) {
       payload = <String, dynamic>{};
     } else {
@@ -131,26 +158,39 @@ class ApiClient {
         payload = <String, dynamic>{'message': response.body};
       }
     }
+
     if (response.statusCode >= 400) {
       final message = payload is Map ? payload['message']?.toString() : null;
-      throw ApiException(message ?? 'Request failed (${response.statusCode})',
-          response.statusCode);
+
+      throw ApiException(
+        message ?? 'Request failed (${response.statusCode})',
+        response.statusCode,
+      );
     }
+
     return payload;
   }
 
   void _logRequest(String method, Uri url) {
-    if (kDebugMode) debugPrint('[MaidItQuick API] -> $method $url');
+    if (kDebugMode) {
+      debugPrint('[MaidItQuick API] -> $method $url');
+    }
   }
 
   void _logResponse(String method, Uri url, int statusCode) {
-    if (kDebugMode) debugPrint('[MaidItQuick API] <- $statusCode $method $url');
+    if (kDebugMode) {
+      debugPrint('[MaidItQuick API] <- $statusCode $method $url');
+    }
   }
 }
 
 MediaType _mediaType(String mimeType) {
   final parts = mimeType.split('/');
-  if (parts.length == 2) return MediaType(parts[0], parts[1]);
+
+  if (parts.length == 2) {
+    return MediaType(parts[0], parts[1]);
+  }
+
   return MediaType('application', 'octet-stream');
 }
 
