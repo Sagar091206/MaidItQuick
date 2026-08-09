@@ -315,6 +315,8 @@ public class WorkerSafetyController {
         view.put("bankIfsc", profile.getBankIfsc());
         view.put("upiId", profile.getUpiId());
         view.put("payoutDetailsVerified", profile.isPayoutDetailsVerified());
+        view.put("payoutStatus", !profile.hasPayoutDetails() ? "NOT_SUBMITTED"
+                : profile.isPayoutDetailsVerified() ? "APPROVED" : "PENDING");
         view.put("serviceReadinessComplete", profile.isPartnerCodeAccepted());
         view.put("serviceCategories", profile.getServiceCategories());
         view.put("workLocations", profile.getWorkLocations());

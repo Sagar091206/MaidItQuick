@@ -6,6 +6,12 @@ import com.makeitquick.admin.common.NotFoundException;
 import com.makeitquick.admin.common.PageResponse;
 import com.makeitquick.admin.notifications.Notification;
 import com.makeitquick.admin.notifications.AdminNotificationRepository;
+import com.makeitquick.operations.AvailabilityStatus;
+import com.makeitquick.security.Role;
+import com.makeitquick.security.UserAccount;
+import com.makeitquick.security.UserRepository;
+import com.makeitquick.worker.WorkerProfile;
+import com.makeitquick.worker.WorkerProfileRepository;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -17,6 +23,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -27,6 +35,7 @@ import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/admin/partners")
@@ -37,16 +46,24 @@ public class PartnerController {
   private final AdminNotificationRepository notifications;
   private final Path uploadDir;
   private final LiveWorkerKycSyncService liveKycSync;
+  private final UserRepository users;
+  private final WorkerProfileRepository workerProfiles;
+  private final PasswordEncoder encoder;
 
   public PartnerController(PartnerRepository partners, AuditService audit,
                            AdminNotificationRepository notifications,
                            @Value("${app.uploads-dir:uploads}") String uploadsDir,
-                           LiveWorkerKycSyncService liveKycSync) {
+                           LiveWorkerKycSyncService liveKycSync,
+                           UserRepository users, WorkerProfileRepository workerProfiles,
+                           PasswordEncoder encoder) {
     this.partners = partners;
     this.audit = audit;
     this.notifications = notifications;
     this.uploadDir = Paths.get(uploadsDir).toAbsolutePath().normalize();
     this.liveKycSync = liveKycSync;
+    this.users = users;
+    this.workerProfiles = workerProfiles;
+    this.encoder = encoder;
   }
 
   @GetMapping("/pending-count")
@@ -94,13 +111,27 @@ public class PartnerController {
   }
 
   @PostMapping
+  @Transactional
   @PreAuthorize("hasAuthority('PARTNERS_WRITE')")
   public ApiResponse<Partner> create(@Valid @RequestBody Upsert body, HttpServletRequest req) {
     if (partners.existsByPhone(body.phone().trim())) {
       throw new IllegalArgumentException("A partner with this phone number already exists");
     }
+    if (users.findByPhoneAndRole(body.phone().trim(), Role.WORKER).isPresent()) {
+      throw new IllegalArgumentException("A worker account already exists for this phone number");
+    }
+    String email = body.email() == null || body.email().isBlank()
+        ? "worker-" + body.phone().replaceAll("\\D", "") + "@maiditquick.local"
+        : body.email().trim();
+    UserAccount worker = new UserAccount(body.name().trim(), email,
+        encoder.encode(UUID.randomUUID().toString()), body.phone().trim(), Role.WORKER);
+    worker.setProfileCompleted(false);
+    worker = users.save(worker);
+    workerProfiles.save(new WorkerProfile(worker));
+
     Partner p = new Partner();
     apply(p, body);
+    p.setSourceUserId(worker.getId());
     Partner saved = partners.save(p);
     audit.record("PARTNER_CREATED", "PARTNERS", String.valueOf(saved.getId()), null,
         "{\"name\":\"" + saved.getName() + "\",\"phone\":\"" + saved.getPhone() + "\",\"kycStatus\":\"" + saved.getKycStatus() + "\"}", req);
@@ -206,6 +237,7 @@ public class PartnerController {
     Partner p = find(id);
     if (p.getDeletedAt() != null) throw new IllegalArgumentException("Partner is deleted");
     if ("SUSPENDED".equals(p.getAccountStatus())) throw new IllegalArgumentException("Partner is already suspended");
+    syncLinkedWorker(p, false);
     p.setAccountStatus("SUSPENDED");
     p.setSuspendedAt(Instant.now());
     p.setUpdatedAt(Instant.now());
@@ -223,6 +255,7 @@ public class PartnerController {
     Partner p = find(id);
     if (p.getDeletedAt() != null) throw new IllegalArgumentException("Partner is deleted");
     if ("ACTIVE".equals(p.getAccountStatus())) throw new IllegalArgumentException("Partner account is already active");
+    syncLinkedWorker(p, true);
     p.setAccountStatus("ACTIVE");
     p.setSuspendedAt(null);
     p.setUpdatedAt(Instant.now());
@@ -260,6 +293,20 @@ public class PartnerController {
     return ApiResponse.ok("Partner restored", saved);
   }
 
+  /** Applies an admin account decision to the linked worker identity. */
+  private void syncLinkedWorker(Partner partner, boolean enabled) {
+    if (partner.getSourceUserId() == null) return;
+    users.findById(partner.getSourceUserId()).ifPresent(worker -> {
+      worker.setEnabled(enabled);
+      users.save(worker);
+      if (!enabled) {
+        workerProfiles.findByUser(worker).ifPresent(profile -> {
+          profile.setAvailability(AvailabilityStatus.OFFLINE);
+          workerProfiles.save(profile);
+        });
+      }
+    });
+  }
   private void deleteFile(String urlPath) {
     if (urlPath == null || urlPath.isBlank()) return;
     try {

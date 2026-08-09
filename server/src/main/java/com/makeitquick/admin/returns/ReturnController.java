@@ -6,6 +6,8 @@ import com.makeitquick.admin.common.NotFoundException;
 import com.makeitquick.admin.common.PageResponse;
 import com.makeitquick.booking.Booking;
 import com.makeitquick.booking.BookingRepository;
+import com.makeitquick.notification.NotificationService;
+import com.makeitquick.notification.NotificationType;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -30,11 +32,14 @@ public class ReturnController {
   private final ReturnRepository returns;
   private final BookingRepository bookings;
   private final AuditService audit;
+  private final NotificationService notifications;
 
-  public ReturnController(ReturnRepository returns, BookingRepository bookings, AuditService audit) {
+  public ReturnController(ReturnRepository returns, BookingRepository bookings, AuditService audit,
+      NotificationService notifications) {
     this.returns = returns;
     this.bookings = bookings;
     this.audit = audit;
+    this.notifications = notifications;
   }
 
   @GetMapping
@@ -117,6 +122,15 @@ public class ReturnController {
     r.setDecidedAt(Instant.now());
     r.setUpdatedAt(Instant.now());
     ReturnRequest saved = returns.save(r);
+    bookings.findById(saved.getBookingId()).ifPresent(booking -> {
+      String message = switch (saved.getStatus()) {
+        case "APPROVED" -> "Your refund request was approved. Your money will be refunded within 24 hours.";
+        case "REJECTED" -> "Your refund request was not approved.";
+        case "REFUNDED" -> "Your refund has been completed.";
+        default -> "Your refund request status was updated.";
+      };
+      notifications.send(booking.getCustomer(), NotificationType.BOOKING, "Refund update", message);
+    });
     audit.record("RETURN_STATUS_CHANGED", "RETURNS", String.valueOf(id), null,
         "{\"status\":\"" + saved.getStatus() + "\"}", req);
     return ApiResponse.ok(saved);

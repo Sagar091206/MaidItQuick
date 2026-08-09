@@ -72,6 +72,7 @@ class PartnerProfileTab extends StatelessWidget {
       'payoutStatus',
       'bankStatus',
       'bankVerificationStatus',
+      'payoutDetailsVerified',
       'payoutCompleted',
     ]);
 
@@ -401,4 +402,3 @@ class _ProfileVerificationCardState extends State<_ProfileVerificationCard> {
     );
   }
 }
-

@@ -71,11 +71,57 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     if (reason == null || reason.trim().isEmpty || !mounted) return;
     setState(() => _busy = true);
     try {
-      final updated =
-          await _repository.cancel(widget.session.token, booking.id, reason.trim());
+      final updated = await _repository.cancel(
+          widget.session.token, booking.id, reason.trim());
       if (mounted) {
         setState(() => _booking = updated);
         _showMessage('Booking cancelled');
+        if (updated.isPaid && await _confirmRefund(updated) && mounted) {
+          await _requestRefund(updated, reason.trim());
+        }
+      }
+    } on ApiException catch (error) {
+      _showMessage(error.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<bool> _confirmRefund(CustomerBooking booking) async {
+    final amount = formatPaise(booking.paymentAmountPaise);
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Request a refund?'),
+            content: Text(
+              'You paid $amount for this booking. Would you like to send a refund request for review?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Not now'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Request refund'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _requestRefund(CustomerBooking booking, String reason) async {
+    setState(() => _busy = true);
+    try {
+      final updated = await _repository.requestRefund(
+        widget.session.token,
+        booking.id,
+        reason.isEmpty ? 'Cancelled booking' : reason,
+      );
+      if (mounted) {
+        setState(() => _booking = updated);
+        _showMessage('Refund request submitted for review.');
       }
     } on ApiException catch (error) {
       _showMessage(error.message);
@@ -105,7 +151,8 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
             child: const Text('Keep booking'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(_cancelReasonController.text),
+            onPressed: () =>
+                Navigator.of(context).pop(_cancelReasonController.text),
             child: const Text('Cancel booking'),
           ),
         ],
@@ -155,7 +202,8 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                 onPressed: () => Navigator.of(context).pop(slot),
                 child: Row(
                   children: [
-                    Icon(Icons.schedule_outlined, color: context.scheme.primary),
+                    Icon(Icons.schedule_outlined,
+                        color: context.scheme.primary),
                     const SizedBox(width: 12),
                     Text(_slotLabel(slot)),
                   ],
@@ -266,8 +314,8 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
               child: const Text('Not now'),
             ),
             FilledButton(
-              onPressed: () =>
-                  Navigator.of(context).pop((stars, _ratingController.text.trim())),
+              onPressed: () => Navigator.of(context)
+                  .pop((stars, _ratingController.text.trim())),
               child: const Text('Submit rating'),
             ),
           ],
@@ -329,6 +377,15 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
                     onCancel: _booking!.canCancel ? _cancel : null,
                     onReschedule: _booking!.canReschedule ? _reschedule : null,
                     onRate: _booking!.canRate ? _rate : null,
+                    onRequestRefund: _booking!.canRequestRefund
+                        ? () async {
+                            final booking = _booking!;
+                            if (await _confirmRefund(booking) && mounted) {
+                              await _requestRefund(
+                                  booking, booking.cancellationReason);
+                            }
+                          }
+                        : null,
                   ),
       ),
     );
@@ -343,6 +400,7 @@ class _DetailsBody extends StatelessWidget {
     required this.onCancel,
     required this.onReschedule,
     required this.onRate,
+    required this.onRequestRefund,
   });
 
   final CustomerBooking booking;
@@ -351,6 +409,7 @@ class _DetailsBody extends StatelessWidget {
   final VoidCallback? onCancel;
   final VoidCallback? onReschedule;
   final VoidCallback? onRate;
+  final VoidCallback? onRequestRefund;
 
   @override
   Widget build(BuildContext context) {
@@ -389,8 +448,8 @@ class _DetailsBody extends StatelessWidget {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(line,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w700)),
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w700)),
                       ),
                     ],
                   ),
@@ -419,14 +478,16 @@ class _DetailsBody extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _DetailRow(label: 'Duration', value: '${booking.durationMinutes} min'),
+              _DetailRow(
+                  label: 'Duration', value: '${booking.durationMinutes} min'),
               _DetailRow(label: 'Service option', value: booking.optionLabel),
               if (booking.promoCode.isNotEmpty)
                 _DetailRow(label: 'Promo code', value: booking.promoCode),
               if (booking.discountPaise > 0)
                 _DetailRow(
                     label: 'Discount',
-                    value: '₹${(booking.discountPaise / 100).toStringAsFixed(0)}'),
+                    value:
+                        '₹${(booking.discountPaise / 100).toStringAsFixed(0)}'),
               if (booking.specialInstructions.isNotEmpty)
                 _DetailRow(
                     label: 'Instructions', value: booking.specialInstructions),
@@ -454,6 +515,12 @@ class _DetailsBody extends StatelessWidget {
             ],
           ),
         ),
+        if (booking.refundStatus.isNotEmpty)
+          _Section(
+            title: 'Refund request',
+            icon: Icons.currency_rupee_outlined,
+            child: _RefundStatus(booking: booking),
+          ),
         if (booking.rating > 0)
           _Section(
             title: 'Your rating',
@@ -486,6 +553,15 @@ class _DetailsBody extends StatelessWidget {
           ),
           const SizedBox(height: 10),
         ],
+        if (onRequestRefund != null) ...[
+          FilledButton.icon(
+            onPressed: busy ? null : onRequestRefund,
+            icon: const Icon(Icons.currency_rupee_outlined),
+            label: Text(
+                'Request refund ${formatPaise(booking.paymentAmountPaise)}'),
+          ),
+          const SizedBox(height: 10),
+        ],
         if (onCancel != null)
           OutlinedButton.icon(
             onPressed: busy ? null : onCancel,
@@ -495,6 +571,36 @@ class _DetailsBody extends StatelessWidget {
             ),
             label: const Text('Cancel booking'),
           ),
+      ],
+    );
+  }
+}
+
+class _RefundStatus extends StatelessWidget {
+  const _RefundStatus({required this.booking});
+
+  final CustomerBooking booking;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = booking.refundStatus;
+    final message = switch (status) {
+      'REQUESTED' => 'Your refund request is awaiting admin review.',
+      'APPROVED' => 'Your money will be refunded within 24 hours.',
+      'REFUNDED' => 'Your refund has been completed.',
+      'REJECTED' => booking.refundAdminNote.isEmpty
+          ? 'Your refund request was not approved.'
+          : booking.refundAdminNote,
+      _ => '',
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _DetailRow(label: 'Status', value: status.replaceAll('_', ' ')),
+        if (booking.refundAmountPaise > 0)
+          _DetailRow(
+              label: 'Amount', value: formatPaise(booking.refundAmountPaise)),
+        if (message.isNotEmpty) Text(message),
       ],
     );
   }
@@ -556,9 +662,8 @@ class _TimelineRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = context.scheme;
-    final active = event.status == 'CANCELLED'
-        ? theme.colorScheme.error
-        : scheme.primary;
+    final active =
+        event.status == 'CANCELLED' ? theme.colorScheme.error : scheme.primary;
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -634,8 +739,8 @@ class _StatusBanner extends StatelessWidget {
                   Text(
                     _statusHint(status),
                     style: TextStyle(
-                        color: scheme.onPrimaryContainer
-                            .withValues(alpha: 0.7)),
+                        color:
+                            scheme.onPrimaryContainer.withValues(alpha: 0.7)),
                   ),
                 ],
               ),
@@ -737,8 +842,7 @@ class _DetailRow extends StatelessWidget {
           const SizedBox(width: 12),
           Flexible(
             child: Text(value,
-                textAlign: TextAlign.right,
-                style: theme.textTheme.bodyMedium),
+                textAlign: TextAlign.right, style: theme.textTheme.bodyMedium),
           ),
         ],
       ),

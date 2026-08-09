@@ -31,7 +31,7 @@ public class SessionResolver {
         Claims claims = jwt.parse(token);
         if (claims != null) {
             try {
-                return users.findById(Long.parseLong(claims.getSubject()));
+                return users.findById(Long.parseLong(claims.getSubject())).filter(UserAccount::isEnabled);
             } catch (NumberFormatException e) {
                 return Optional.empty();
             }

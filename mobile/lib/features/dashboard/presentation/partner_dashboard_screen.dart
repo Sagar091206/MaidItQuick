@@ -81,13 +81,20 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen>
         _partnerRepository.fetchProfile(widget.session.token),
         _partnerRepository.fetchBookings(widget.session.token),
         _partnerRepository.fetchNotifications(widget.session.token),
+        _partnerRepository.fetchInstantRequests(widget.session.token),
       ]);
       final dashboard = Map<String, dynamic>.from(results[0] as Map);
       final bookings = List<Map<String, dynamic>>.from(results[1] as List);
       final notifications = List<Map<String, dynamic>>.from(results[2] as List);
-      final requests = bookings
-          .where((booking) => booking['status']?.toString() == 'ASSIGNED')
-          .toList();
+      final instantRequests =
+          List<Map<String, dynamic>>.from(results[3] as List)
+              .map((booking) => {...booking, 'isInstantRequest': true})
+              .toList();
+      final requests = [
+        ...instantRequests,
+        ...bookings
+            .where((booking) => booking['status']?.toString() == 'ASSIGNED'),
+      ];
       final otherBookings = bookings
           .where((booking) => booking['status']?.toString() != 'ASSIGNED')
           .toList();
@@ -353,7 +360,8 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen>
 
   Future<void> _openBooking(Map<String, dynamic> booking) async {
     final bookingId = (booking['id'] ?? booking['bookingId'] ?? '').toString();
-    if (bookingId.isNotEmpty) {
+    final isInstantRequest = booking['isInstantRequest'] == true;
+    if (bookingId.isNotEmpty && !isInstantRequest) {
       try {
         booking = {
           ...booking,

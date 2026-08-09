@@ -159,10 +159,42 @@ class PartnerRepository {
         token: token,
       ));
 
+  Future<List<Map<String, dynamic>>> fetchInstantRequests(String token) =>
+      _asList(_api.get('/instant-bookings/requests', token: token));
+
+  Future<Map<String, dynamic>> acceptInstantBooking(
+    String token,
+    String bookingId,
+  ) =>
+      _asMap(_api.post('/instant-bookings/$bookingId/accept', const {},
+          token: token));
+
   Future<Map<String, dynamic>> startJourney(String token, String bookingId) =>
       _asMap(
           _api.post('/bookings/$bookingId/on-the-way', const {}, token: token));
 
+  Future<Map<String, dynamic>> markArrived(String token, String bookingId) =>
+      _asMap(_api.post('/bookings/$bookingId/arrived', const {}, token: token));
+
+  Future<Map<String, dynamic>> requestStartCode(
+          String token, String bookingId) =>
+      _asMap(
+          _api.post('/bookings/$bookingId/start-code', const {}, token: token));
+
+  Future<Map<String, dynamic>> startService(
+          String token, String bookingId, String code) =>
+      _asMap(_api.post('/bookings/$bookingId/start', {'code': code},
+          token: token));
+
+  Future<Map<String, dynamic>> requestCompletionCode(
+          String token, String bookingId) =>
+      _asMap(
+          _api.post('/bookings/$bookingId/end-code', const {}, token: token));
+
+  Future<Map<String, dynamic>> completeService(
+          String token, String bookingId, String code) =>
+      _asMap(_api.post('/bookings/$bookingId/complete', {'code': code},
+          token: token));
   Future<Map<String, dynamic>> requestContactToken(
     String token,
     String bookingId,

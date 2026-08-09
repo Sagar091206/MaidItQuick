@@ -138,6 +138,12 @@ public class PaymentService {
 
     private void requireNotExpired(Booking booking) {
         if (booking.getPaymentStatus() != PaymentStatus.PAID
+                && booking.getExpiresAt() != null
+                && !booking.getExpiresAt().isAfter(Instant.now())) {
+            throw new ResponseStatusException(HttpStatus.GONE,
+                    "This instant booking request has expired. Please create a new request.");
+        }
+        if (booking.getPaymentStatus() != PaymentStatus.PAID
                 && booking.getCreatedAt() != null
                 && Duration.between(booking.getCreatedAt(), Instant.now()).compareTo(UNPAID_TIMEOUT) > 0) {
             throw new ResponseStatusException(HttpStatus.GONE,
