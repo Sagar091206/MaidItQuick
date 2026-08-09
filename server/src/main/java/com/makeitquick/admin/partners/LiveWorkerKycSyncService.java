@@ -4,6 +4,7 @@ import com.makeitquick.worker.WorkerProfile;
 import com.makeitquick.worker.WorkerProfileRepository;
 import java.time.Instant;
 import org.springframework.stereotype.Service;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Keeps the admin KYC queue aligned with real worker onboarding submissions. */
@@ -17,6 +18,11 @@ public class LiveWorkerKycSyncService {
     this.partners = partners;
   }
 
+  /** Refreshes the admin KYC mirror even when no administrator has a page open. */
+  @Scheduled(fixedDelayString = "${app.kyc-sync-ms:60000}")
+  public void scheduledSync() {
+    sync();
+  }
   @Transactional
   public void sync() {
     for (WorkerProfile profile : workerProfiles.findAll()) {

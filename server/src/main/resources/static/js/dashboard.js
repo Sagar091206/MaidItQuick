@@ -42,6 +42,8 @@ async function loadDashboard(el) {
       loadKycCounts(),
       loadLiveBookings(),
     ]);
+    // Replace the loading state before adding completed dashboard sections.
+    el.innerHTML = "";
     renderKycQueue(el, kycCounts);
     renderLiveBookings(el, liveBookings);
   } catch (err) {

@@ -34,7 +34,8 @@ class _IncomingBookingRequestScreenState
   String? _resultTitle;
   String? _resultMessage;
 
-  late final PartnerRepository _partnerRepository = PartnerRepository(widget.api);
+  late final PartnerRepository _partnerRepository =
+      PartnerRepository(widget.api);
 
   @override
   void initState() {
@@ -74,6 +75,11 @@ class _IncomingBookingRequestScreenState
   String get _bookingId =>
       (widget.booking['id'] ?? widget.booking['bookingId'] ?? '').toString();
 
+  bool get _isInstantRequest =>
+      widget.booking['isInstantRequest'] == true ||
+      widget.booking['status']?.toString() == 'SEARCHING' ||
+      widget.booking['optionLabel']?.toString() == 'Instant Maid';
+
   String get _customerName => (widget.booking['customerFirstName'] ??
           widget.booking['customerName'] ??
           widget.booking['customer'] ??
@@ -105,21 +111,28 @@ class _IncomingBookingRequestScreenState
           'Distance unavailable')
       .toString();
 
-  String get _duration => (widget.booking['duration'] ??
-          widget.booking['estimatedDuration'] ??
-          'Duration unavailable')
-      .toString();
+  String get _duration {
+    final value = widget.booking['duration'] ??
+        widget.booking['estimatedDuration'] ??
+        widget.booking['durationMinutes'];
+    if (value == null) return 'Duration unavailable';
+    final text = value.toString().trim();
+    return widget.booking['durationMinutes'] != null &&
+            widget.booking['duration'] == null &&
+            widget.booking['estimatedDuration'] == null
+        ? '$text min'
+        : text;
+  }
 
   String get _earnings {
+    final paise = widget.booking['paymentAmountPaise'];
+    if (paise is num) return '₹${(paise / 100).toStringAsFixed(0)}';
     final value = widget.booking['estimatedEarnings'] ??
         widget.booking['estimatedPayout'] ??
         widget.booking['payout'] ??
         widget.booking['amount'];
-
     if (value == null) return '₹0';
-
-    final text = value.toString().trim();
-    return text.startsWith('₹') ? text : '₹$text';
+    return '₹${value.toString().trim().replaceFirst('₹', '')}';
   }
 
   String get _timerText {
@@ -142,10 +155,15 @@ class _IncomingBookingRequestScreenState
     setState(() => _submitting = true);
 
     try {
-      final data = await _partnerRepository.acceptBooking(
-        widget.session.token,
-        _bookingId,
-      );
+      final data = _isInstantRequest
+          ? await _partnerRepository.acceptInstantBooking(
+              widget.session.token,
+              _bookingId,
+            )
+          : await _partnerRepository.acceptBooking(
+              widget.session.token,
+              _bookingId,
+            );
 
       _timer?.cancel();
 
@@ -205,6 +223,11 @@ class _IncomingBookingRequestScreenState
     setState(() => _submitting = true);
 
     try {
+      if (_isInstantRequest) {
+        _timer?.cancel();
+        _showResult('Request declined', 'The instant request was dismissed.');
+        return;
+      }
       await _partnerRepository.rejectBooking(
         widget.session.token,
         _bookingId,
@@ -523,4 +546,3 @@ class _RejectBookingSheetState extends State<_RejectBookingSheet> {
     );
   }
 }
-

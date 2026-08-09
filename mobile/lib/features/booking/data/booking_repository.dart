@@ -38,7 +38,8 @@ class BookingRepository {
   Future<List<CustomerBooking>> list(String token) async {
     final payload = await _api.get('/bookings', token: token) as List;
     return payload
-        .map((item) => CustomerBooking.fromJson(Map<String, dynamic>.from(item as Map)))
+        .map((item) =>
+            CustomerBooking.fromJson(Map<String, dynamic>.from(item as Map)))
         .toList();
   }
 
@@ -49,21 +50,31 @@ class BookingRepository {
   }
 
   Future<CustomerBooking> cancel(String token, int id, String reason) async {
-    final payload = Map<String, dynamic>.from(
-        await _api.post('/bookings/$id/cancel', {'reason': reason}, token: token)
-            as Map);
+    final payload = Map<String, dynamic>.from(await _api
+        .post('/bookings/$id/cancel', {'reason': reason}, token: token) as Map);
     return CustomerBooking.fromJson(payload);
   }
 
-  Future<CustomerBooking> reschedule(String token, int id, String scheduledFor) async {
+  Future<CustomerBooking> requestRefund(
+      String token, int id, String reason) async {
     final payload = Map<String, dynamic>.from(await _api.post(
-        '/bookings/$id/reschedule',
-        {'scheduledFor': scheduledFor},
+      '/bookings/$id/refund-request',
+      {'reason': reason},
+      token: token,
+    ) as Map);
+    return CustomerBooking.fromJson(payload);
+  }
+
+  Future<CustomerBooking> reschedule(
+      String token, int id, String scheduledFor) async {
+    final payload = Map<String, dynamic>.from(await _api.post(
+        '/bookings/$id/reschedule', {'scheduledFor': scheduledFor},
         token: token) as Map);
     return CustomerBooking.fromJson(payload);
   }
 
-  Future<CustomerBooking> rate(String token, int id, int stars, String comment) async {
+  Future<CustomerBooking> rate(
+      String token, int id, int stars, String comment) async {
     final payload = Map<String, dynamic>.from(await _api.post(
       '/bookings/$id/rating',
       {'stars': stars, if (comment.isNotEmpty) 'comment': comment},
@@ -75,7 +86,8 @@ class BookingRepository {
   /// Creates a payment intent for the booking with the chosen method.
   Future<PayIntent> createPayIntent(String token, int id, String method) async {
     final payload = Map<String, dynamic>.from(await _api.post(
-        '/bookings/$id/pay-intent', {'method': method}, token: token) as Map);
+        '/bookings/$id/pay-intent', {'method': method},
+        token: token) as Map);
     return PayIntent.fromJson(payload);
   }
 
@@ -135,10 +147,14 @@ class CustomerBooking {
     this.startOtpIssued = false,
     this.endOtpIssued = false,
     this.cancellationReason = '',
+    this.refundStatus = '',
+    this.refundAmountPaise = 0,
+    this.refundAdminNote = '',
     this.events = const [],
   });
 
-  factory CustomerBooking.fromJson(Map<String, dynamic> json) => CustomerBooking(
+  factory CustomerBooking.fromJson(Map<String, dynamic> json) =>
+      CustomerBooking(
         id: (json['id'] as num).toInt(),
         service: json['service'] as String? ?? '',
         services: (json['services'] as List?)
@@ -155,8 +171,7 @@ class CustomerBooking {
         specialInstructions: json['specialInstructions'] as String? ?? '',
         status: json['status'] as String? ?? '',
         paymentStatus: json['paymentStatus'] as String? ?? 'UNPAID',
-        paymentAmountPaise:
-            (json['paymentAmountPaise'] as num?)?.toInt() ?? 0,
+        paymentAmountPaise: (json['paymentAmountPaise'] as num?)?.toInt() ?? 0,
         paymentMethod: json['paymentMethod'] as String? ?? '',
         paidAt: json['paidAt'] as String?,
         startOtpIssued: json['startOtpIssued'] as bool? ?? false,
@@ -165,9 +180,12 @@ class CustomerBooking {
         worker: json['worker'] as String? ?? '',
         rating: (json['rating'] as num?)?.toInt() ?? 0,
         cancellationReason: json['cancellationReason'] as String? ?? '',
+        refundStatus: json['refundStatus'] as String? ?? '',
+        refundAmountPaise: (json['refundAmountPaise'] as num?)?.toInt() ?? 0,
+        refundAdminNote: json['refundAdminNote'] as String? ?? '',
         events: (json['events'] as List?)
-                ?.map((item) =>
-                    BookingEvent.fromJson(Map<String, dynamic>.from(item as Map)))
+                ?.map((item) => BookingEvent.fromJson(
+                    Map<String, dynamic>.from(item as Map)))
                 .toList() ??
             const [],
       );
@@ -194,6 +212,9 @@ class CustomerBooking {
   final String worker;
   final int rating;
   final String cancellationReason;
+  final String refundStatus;
+  final int refundAmountPaise;
+  final String refundAdminNote;
   final List<BookingEvent> events;
 
   bool get isActive =>
@@ -212,6 +233,9 @@ class CustomerBooking {
   bool get canCancel => status == 'REQUESTED' || status == 'ASSIGNED';
 
   bool get canReschedule => status == 'REQUESTED';
+
+  bool get canRequestRefund =>
+      status == 'CANCELLED' && isPaid && refundStatus.isEmpty;
 
   bool get canRate => status == 'COMPLETED' && rating == 0;
 

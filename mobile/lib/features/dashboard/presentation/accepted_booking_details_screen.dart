@@ -31,9 +31,11 @@ class _AcceptedBookingDetailsScreenState
   bool _contactLoading = false;
   bool _cancelling = false;
   bool _journeyStarting = false;
+  bool _stageUpdating = false;
   String? _error;
 
-  late final PartnerRepository _partnerRepository = PartnerRepository(widget.api);
+  late final PartnerRepository _partnerRepository =
+      PartnerRepository(widget.api);
 
   @override
   void initState() {
@@ -107,9 +109,11 @@ class _AcceptedBookingDetailsScreenState
         const ['scheduledFor', 'dateTime', 'scheduledTime', 'time'],
       );
 
-  String get _duration => _text(
-        const ['duration', 'estimatedDuration'],
-      );
+  String get _duration {
+    final minutes = _booking?['durationMinutes'];
+    if (minutes != null) return '$minutes min';
+    return _text(const ['duration', 'estimatedDuration']);
+  }
 
   String get _distance => _text(
         const ['distance', 'distanceKm'],
@@ -117,15 +121,14 @@ class _AcceptedBookingDetailsScreenState
 
   String get _earnings {
     final data = _booking ?? const <String, dynamic>{};
+    final paise = data['paymentAmountPaise'];
+    if (paise is num) return '₹${(paise / 100).toStringAsFixed(0)}';
     final value = data['estimatedEarnings'] ??
         data['estimatedPayout'] ??
         data['payout'] ??
         data['amount'];
-
     if (value == null) return '₹0';
-
-    final text = value.toString().trim();
-    return text.startsWith('₹') ? text : '₹$text';
+    return '₹${value.toString().trim().replaceFirst('₹', '')}';
   }
 
   List<String> get _serviceChecklist {
@@ -176,6 +179,138 @@ class _AcceptedBookingDetailsScreenState
       _showMessage('Could not start the journey right now.');
     } finally {
       if (mounted) setState(() => _journeyStarting = false);
+    }
+  }
+
+  String get _status =>
+      (_booking?['status'] ?? 'ASSIGNED').toString().trim().toUpperCase();
+
+  Future<void> _updateStage(Future<Map<String, dynamic>> Function() request,
+      String successMessage) async {
+    if (_stageUpdating) return;
+    setState(() => _stageUpdating = true);
+    try {
+      final result = await request();
+      if (!mounted) return;
+      setState(() => _booking = {...?_booking, ...result});
+      _showMessage(successMessage);
+    } on ApiException catch (error) {
+      _showMessage(error.message);
+    } catch (_) {
+      _showMessage('This booking update could not be saved. Please try again.');
+    } finally {
+      if (mounted) setState(() => _stageUpdating = false);
+    }
+  }
+
+  Future<void> _verifyOtp({required bool completing}) async {
+    if (_stageUpdating) return;
+    setState(() => _stageUpdating = true);
+    try {
+      if (completing) {
+        await _partnerRepository.requestCompletionCode(
+            widget.session.token, widget.bookingId);
+      } else {
+        await _partnerRepository.requestStartCode(
+            widget.session.token, widget.bookingId);
+      }
+      if (!mounted) return;
+      final controller = TextEditingController();
+      final code = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(completing ? 'Complete service' : 'Start service'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(completing
+                  ? 'A completion OTP was sent to the customer. Enter the six-digit code they share with you.'
+                  : 'A start OTP was sent to the customer. Enter the six-digit code they share with you.'),
+              const SizedBox(height: 14),
+              TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: '6-digit OTP')),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () =>
+                    Navigator.of(context).pop(controller.text.trim()),
+                child: const Text('Verify')),
+          ],
+        ),
+      );
+      controller.dispose();
+      if (code == null || !RegExp(r'^\d{6}$').hasMatch(code)) {
+        _showMessage('Enter the six-digit OTP shared by the customer.');
+        return;
+      }
+      final result = completing
+          ? await _partnerRepository.completeService(
+              widget.session.token, widget.bookingId, code)
+          : await _partnerRepository.startService(
+              widget.session.token, widget.bookingId, code);
+      if (!mounted) return;
+      setState(() => _booking = {...?_booking, ...result});
+      _showMessage(completing
+          ? 'Service completed successfully.'
+          : 'Service has started.');
+    } on ApiException catch (error) {
+      _showMessage(error.message);
+    } catch (_) {
+      _showMessage('OTP verification is unavailable right now.');
+    } finally {
+      if (mounted) setState(() => _stageUpdating = false);
+    }
+  }
+
+  Widget _serviceAction() {
+    final busy = _journeyStarting || _stageUpdating;
+    switch (_status) {
+      case 'ASSIGNED':
+      case 'ACCEPTED':
+        return FilledButton.icon(
+            onPressed: busy ? null : _startJourney,
+            icon: const Icon(Icons.directions_car_filled_outlined),
+            label: Text(
+                _journeyStarting ? 'Starting journey...' : 'Start journey'));
+      case 'ON_THE_WAY':
+        return FilledButton.icon(
+            onPressed: busy
+                ? null
+                : () => _updateStage(
+                    () => _partnerRepository.markArrived(
+                        widget.session.token, widget.bookingId),
+                    'Arrival marked. Ask the customer for the start OTP.'),
+            icon: const Icon(Icons.location_on_outlined),
+            label: Text(_stageUpdating ? 'Saving...' : 'Mark as arrived'));
+      case 'ARRIVED':
+        return FilledButton.icon(
+            onPressed: busy ? null : () => _verifyOtp(completing: false),
+            icon: const Icon(Icons.lock_open_outlined),
+            label: Text(
+                _stageUpdating ? 'Please wait...' : 'Start service with OTP'));
+      case 'IN_PROGRESS':
+        return FilledButton.icon(
+            onPressed: busy ? null : () => _verifyOtp(completing: true),
+            icon: const Icon(Icons.verified_outlined),
+            label: Text(_stageUpdating
+                ? 'Please wait...'
+                : 'Complete service with OTP'));
+      case 'COMPLETED':
+        return FilledButton.icon(
+            onPressed: null,
+            icon: const Icon(Icons.task_alt_outlined),
+            label: const Text('Service completed'));
+      default:
+        return const SizedBox.shrink();
     }
   }
 
@@ -416,13 +551,7 @@ class _AcceptedBookingDetailsScreenState
               ],
             ),
             const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _journeyStarting ? null : _startJourney,
-              icon: const Icon(Icons.play_arrow),
-              label: Text(
-                _journeyStarting ? 'Starting journey...' : 'Start journey',
-              ),
-            ),
+            _serviceAction(),
             const SizedBox(height: 10),
             OutlinedButton.icon(
               onPressed: _navigate,

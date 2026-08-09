@@ -1154,9 +1154,16 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
 
   String get _payoutStatus {
     final profile = _profile;
-    return profile?['payoutStatus']?.toString() ??
-        profile?['payoutVerificationStatus']?.toString() ??
-        (profile?['payoutConfigured'] == true ? 'APPROVED' : 'NOT SUBMITTED');
+    final status = profile?["payoutStatus"]?.toString() ??
+        profile?["payoutVerificationStatus"]?.toString();
+    if (status != null && status.trim().isNotEmpty) return status;
+    if (profile?["payoutDetailsVerified"] == true ||
+        profile?["payoutConfigured"] == true) return "APPROVED";
+    final submitted =
+        (profile?["payoutMethod"]?.toString().isNotEmpty ?? false) ||
+            (profile?["bankAccountLast4"]?.toString().isNotEmpty ?? false) ||
+            (profile?["upiId"]?.toString().isNotEmpty ?? false);
+    return submitted ? "PENDING" : "NOT SUBMITTED";
   }
 
   String _status(String key) => _profile?[key]?.toString() ?? 'NOT_SUBMITTED';

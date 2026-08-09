@@ -2,8 +2,8 @@ package com.makeitquick.booking;
 import com.makeitquick.catalog.ServiceCatalogService;
 import com.makeitquick.notification.NotificationService;
 import com.makeitquick.notification.NotificationType;
-import com.makeitquick.operations.RefundRequest;
-import com.makeitquick.operations.RefundService;
+import com.makeitquick.admin.returns.ReturnRepository;
+import com.makeitquick.admin.returns.ReturnRequest;
 import com.makeitquick.operations.ServiceAreaService;
 import com.makeitquick.security.*;
 import com.makeitquick.worker.WorkerSafetyService;
@@ -27,7 +27,7 @@ public class BookingController {
     private final UserRepository users;
     private final NotificationService notifications;
     private final WorkerSafetyService workerSafety;
-    private final RefundService refunds;
+    private final ReturnRepository returns;
     private final ServiceAreaService serviceAreas;
     private final ServiceCatalogService catalog;
     private final BookingAssignmentService assigner;
@@ -37,7 +37,7 @@ public class BookingController {
 
     BookingController(BookingRepository r, BookingServiceRepository bs, BookingEventRepository events,
                       SessionResolver resolver, UserRepository users, NotificationService n, WorkerSafetyService w,
-                      RefundService refunds, ServiceAreaService areas, ServiceCatalogService catalog,
+                      ReturnRepository returns, ServiceAreaService areas, ServiceCatalogService catalog,
                       BookingAssignmentService assigner, BookingPricingService pricing,
                       PasswordEncoder encoder) {
         repo = r;
@@ -47,7 +47,7 @@ public class BookingController {
         this.users = users;
         notifications = n;
         workerSafety = w;
-        this.refunds = refunds;
+        this.returns = returns;
         serviceAreas = areas;
         this.catalog = catalog;
         this.assigner = assigner;
@@ -196,7 +196,9 @@ public class BookingController {
         UserAccount u = me(h);
         Booking b = get(id);
         boolean admin = u.getRole() == Role.ADMIN;
-        if (!b.getCustomer().getId().equals(u.getId()) && !admin) {
+        boolean customer = b.getCustomer().getId().equals(u.getId());
+        boolean worker = b.getWorker() != null && b.getWorker().getId().equals(u.getId());
+        if (!customer && !worker && !admin) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not your booking");
         }
         if (b.getStatus() == BookingStatus.CANCELLED) {
@@ -206,11 +208,15 @@ public class BookingController {
                 || b.getStatus() == BookingStatus.ON_THE_WAY) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking cannot be cancelled after the worker is on the way");
         }
-        if (!admin && b.getStatus() != BookingStatus.REQUESTED
+        if (worker && b.getStatus() != BookingStatus.ASSIGNED && b.getStatus() != BookingStatus.ACCEPTED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A partner can cancel only an assigned or accepted booking");
+        }
+        if (customer && b.getStatus() != BookingStatus.REQUESTED
                 && b.getStatus() != BookingStatus.ASSIGNED
                 && b.getStatus() != BookingStatus.ACCEPTED) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT, "Only requested, assigned or accepted bookings can be cancelled");
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only requested, assigned or accepted bookings can be cancelled");
         }
         // Paid bookings may still be cancelled; the refund is requested via
         // /refund-request afterwards (MVP: no hard block).
@@ -250,13 +256,37 @@ public class BookingController {
         if (!b.getCustomer().getId().equals(u.getId()) || b.getStatus() != BookingStatus.CANCELLED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only your cancelled bookings can be submitted for refund review");
         }
-        RefundRequest refund = refunds.request("MIQ-" + b.getId(), x.reason(), x.amountPaise());
+        if (b.getPaymentStatus() != com.makeitquick.payment.PaymentStatus.PAID) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only paid bookings are eligible for a refund request");
+        }
+        if (returns.findTopByBookingIdOrderByCreatedAtDesc(b.getId()).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "A refund request already exists for this booking");
+        }
+        ReturnRequest refund = new ReturnRequest();
+        refund.setBookingId(b.getId());
+        refund.setRequestedAmount(java.math.BigDecimal.valueOf(b.getPaymentAmountPaise(), 2));
+        refund.setReason(x.reason().trim());
+        returns.save(refund);
         notifications.send(u, NotificationType.BOOKING, "Refund request submitted",
                 "Your refund request is awaiting admin review.");
-        return Map.of("id", refund.getId(), "bookingReference", refund.getBookingReference(),
-                "status", refund.getStatus(), "message", "Refund request submitted for review");
+        return view(b);
     }
 
+    @PostMapping("/{id}/contact-token")
+    public Map<String, Object> contactToken(@RequestHeader("Authorization") String h, @PathVariable Long id) {
+        UserAccount u = me(h);
+        Booking b = get(id);
+        if (b.getWorker() == null || !b.getWorker().getId().equals(u.getId())
+                || (b.getStatus() != BookingStatus.ASSIGNED && b.getStatus() != BookingStatus.ACCEPTED
+                && b.getStatus() != BookingStatus.ON_THE_WAY && b.getStatus() != BookingStatus.ARRIVED)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only the assigned partner can contact the customer for this booking");
+        }
+        return Map.of(
+                "channel", "masked customer contact",
+                "token", "contact-" + UUID.randomUUID(),
+                "expiresInSeconds", 600);
+    }
     @PostMapping("/{id}/on-the-way")
     public Map<String, Object> onTheWay(@RequestHeader("Authorization") String h, @PathVariable Long id) {
         Booking b = get(id);
@@ -440,6 +470,15 @@ public class BookingController {
         result.put("worker", b.getWorker() == null ? "Unassigned" : b.getWorker().getName());
         result.put("rating", b.getRating() == null ? 0 : b.getRating());
         result.put("cancellationReason", b.getCancellationReason());
+        returns.findTopByBookingIdOrderByCreatedAtDesc(b.getId()).ifPresentOrElse(refund -> {
+            result.put("refundStatus", refund.getStatus());
+            result.put("refundAmountPaise", refund.getRequestedAmount().movePointRight(2).intValue());
+            result.put("refundAdminNote", refund.getAdminNote() == null ? "" : refund.getAdminNote());
+        }, () -> {
+            result.put("refundStatus", "");
+            result.put("refundAmountPaise", 0);
+            result.put("refundAdminNote", "");
+        });
         result.put("events", bookingEvents.findByBookingIdOrderByCreatedAtAsc(b.getId()).stream()
                 .map(event -> Map.<String, Object>of(
                         "status", event.getStatus(),
@@ -455,7 +494,7 @@ public class BookingController {
     record Assign(@NotNull Long workerId) {}
     record Reason(@NotBlank String reason) {}
     record Slot(@NotBlank String scheduledFor) {}
-    record RefundInput(@NotBlank String reason, @Min(1) @Max(1000000) int amountPaise) {}
+    record RefundInput(@NotBlank String reason) {}
     record Otp(@Pattern(regexp = "\\d{6}") String code) {}
     record Rating(@Min(1) @Max(5) int stars, String comment) {}
 }
