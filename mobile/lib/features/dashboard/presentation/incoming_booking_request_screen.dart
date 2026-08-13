@@ -224,8 +224,19 @@ class _IncomingBookingRequestScreenState
 
     try {
       if (_isInstantRequest) {
+        await _partnerRepository.rejectInstantBooking(
+          widget.session.token,
+          _bookingId,
+        );
+
         _timer?.cancel();
-        _showResult('Request declined', 'The instant request was dismissed.');
+
+        if (!mounted) return;
+        setState(() {
+          _finished = true;
+          _resultTitle = 'Request declined';
+          _resultMessage = 'The instant request was dismissed successfully.';
+        });
         return;
       }
       await _partnerRepository.rejectBooking(

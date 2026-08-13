@@ -12,9 +12,14 @@ import 'api_config.dart';
 /// It logs request paths and response codes only in debug builds. Session
 /// tokens and passwords are intentionally never written to logs.
 class ApiClient {
-  ApiClient({http.Client? client}) : _client = client ?? http.Client();
+  ApiClient({http.Client? client, this.onSessionExpired})
+      : _client = client ?? http.Client();
 
   static const _requestTimeout = Duration(seconds: 30);
+
+  /// Invoked once per session when an authenticated request comes back 401.
+  /// Used to force a clean local logout instead of leaving dead sessions.
+  void Function()? onSessionExpired;
 
   final http.Client _client;
 
@@ -23,7 +28,7 @@ class ApiClient {
     _logRequest('GET', url);
     final response =
         await _send(() => _client.get(url, headers: _headers(token)), url);
-    return _decode(response, 'GET', url);
+    return _decode(response, 'GET', url, token);
   }
 
   Future<dynamic> post(
@@ -43,7 +48,7 @@ class ApiClient {
       url,
     );
 
-    return _decode(response, 'POST', url);
+    return _decode(response, 'POST', url, token);
   }
 
   Future<dynamic> put(
@@ -63,7 +68,7 @@ class ApiClient {
       url,
     );
 
-    return _decode(response, 'PUT', url);
+    return _decode(response, 'PUT', url, token);
   }
 
   Future<dynamic> delete(String path, {String? token}) async {
@@ -73,7 +78,7 @@ class ApiClient {
     final response =
         await _send(() => _client.delete(url, headers: _headers(token)), url);
 
-    return _decode(response, 'DELETE', url);
+    return _decode(response, 'DELETE', url, token);
   }
 
   Future<dynamic> multipartPost(
@@ -103,7 +108,7 @@ class ApiClient {
     final streamed = await _send(() => request.send(), url);
     final response = await http.Response.fromStream(streamed);
 
-    return _decode(response, 'POST multipart', url);
+    return _decode(response, 'POST multipart', url, token);
   }
 
   Uri _url(String path) => Uri.parse('${ApiConfig.baseUrl}$path');
@@ -144,8 +149,17 @@ class ApiClient {
           'Authorization': 'Bearer $token',
       };
 
-  dynamic _decode(http.Response response, String method, Uri url) {
+  dynamic _decode(http.Response response, String method, Uri url, String? token) {
     _logResponse(method, url, response.statusCode);
+
+    if (response.statusCode == 401 &&
+        token != null &&
+        token.isNotEmpty &&
+        onSessionExpired != null) {
+      // The session is no longer valid; surface it once so the caller can
+      // clear the stored session and route back to sign in.
+      onSessionExpired!();
+    }
 
     dynamic payload;
 

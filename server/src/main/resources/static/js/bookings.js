@@ -6,8 +6,7 @@ import { api } from "./api.js";
 import { registerModule, crudPage, badge, statusSelectOptions, fetchAllPages, confirmDialog, icon, toast } from "./app.js";
 import { escapeHtml, fmtDateTime, money, timeAgo } from "./utils.js";
 
-const STATUS = ["REQUESTED", "SEARCHING", "ASSIGNED", "ACCEPTED", "ON_THE_WAY", "ARRIVED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "EXPIRED"];
-const bookingAmount = (row) => Number(row.paymentAmountPaise || 0) / 100;
+const STATUS = ["PENDING", "CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
 
 async function customerOptions() {
   try {
@@ -64,24 +63,24 @@ registerModule("bookings", (el) =>
         key: "service",
         title: "Service",
         sortable: true,
-        render: (r) => escapeHtml(r.service || "—"),
-        sortValue: (r) => r.service,
+        render: (r) => escapeHtml(r.service?.name || "—"),
+        sortValue: (r) => r.service?.name,
       },
       {
         key: "partner",
         title: "Partner",
         sortable: true,
-        render: (r) => (r.worker ? escapeHtml(r.worker.name) : '<span class="muted">Unassigned</span>'),
-        sortValue: (r) => r.worker?.name,
+        render: (r) => (r.partner ? escapeHtml(r.partner.name) : '<span class="muted">Unassigned</span>'),
+        sortValue: (r) => r.partner?.name,
       },
       {
         key: "scheduledAt",
         title: "Scheduled",
         sortable: true,
-        render: (r) => (r.scheduledFor ? fmtDateTime(r.scheduledFor) : '<span class="muted">—</span>'),
-        sortValue: (r) => r.scheduledFor,
+        render: (r) => (r.scheduledAt ? fmtDateTime(r.scheduledAt) : '<span class="muted">—</span>'),
+        sortValue: (r) => r.scheduledAt,
       },
-      { key: "paymentAmountPaise", title: "Amount", sortable: true, render: (r) => `<strong>${money(bookingAmount(r))}</strong>`, sortValue: bookingAmount },
+      { key: "totalAmount", title: "Amount", sortable: true, render: (r) => `<strong>${money(r.totalAmount)}</strong>`, sortValue: (r) => Number(r.totalAmount) },
       { key: "status", title: "Status", sortable: true, render: (r) => badge(r.status) },
       {
         key: "createdAt",

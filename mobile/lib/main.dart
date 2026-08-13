@@ -27,12 +27,21 @@ class _MaidItQuickAppState extends State<MaidItQuickApp> {
   Session? _session;
   UserRole? _chosenRole;
   bool _splashVisible = true;
+  bool _sessionExpiryHandled = false;
   ThemeMode _themeMode = ThemeMode.system;
 
   @override
   void initState() {
     super.initState();
+    _api.onSessionExpired = _handleSessionExpired;
     _bootstrap();
+  }
+
+  void _handleSessionExpired() {
+    if (_session == null || _sessionExpiryHandled) return;
+    _sessionExpiryHandled = true;
+    _sessionStore.clear();
+    if (mounted) setState(() => _session = null);
   }
 
   Future<void> _bootstrap() async {
@@ -77,6 +86,7 @@ class _MaidItQuickAppState extends State<MaidItQuickApp> {
   void _backToWelcome() => setState(() => _chosenRole = null);
 
   Future<void> _authenticated(Session session) async {
+    _sessionExpiryHandled = false;
     await _sessionStore.save(session);
     if (mounted) {
       setState(() {

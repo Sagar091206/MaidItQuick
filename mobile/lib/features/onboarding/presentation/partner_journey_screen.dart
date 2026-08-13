@@ -11,6 +11,7 @@ import '../../../shared/widgets/onboarding_step_card.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../dashboard/data/partner_repository.dart';
 import '../../dashboard/presentation/partner_dashboard_screen.dart';
+import '../../support/presentation/support_screen.dart';
 
 class PartnerJourneyScreen extends StatefulWidget {
   const PartnerJourneyScreen(
@@ -1018,7 +1019,7 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
           Padding(
             padding: const EdgeInsets.only(top: 10),
             child: OutlinedButton.icon(
-              onPressed: null,
+              onPressed: () => _openSupport(),
               icon: const Icon(Icons.support_agent_outlined),
               label: const Text('Contact support'),
             ),
@@ -1118,6 +1119,20 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
   String _stageLabel(int index) =>
       _applicationStages[index.clamp(0, _applicationStages.length - 1)];
 
+  Future<void> _openSupport() async {
+    if (!mounted) {
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => SupportScreen(
+          api: widget.api,
+          session: widget.session,
+        ),
+      ),
+    );
+  }
+
   void _goToCorrectionSection() {
     final section = (_applicationStatusData?['correctionSection'] ??
             _applicationStatusData?['requiredActionSection'] ??
@@ -1158,7 +1173,9 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
         profile?["payoutVerificationStatus"]?.toString();
     if (status != null && status.trim().isNotEmpty) return status;
     if (profile?["payoutDetailsVerified"] == true ||
-        profile?["payoutConfigured"] == true) return "APPROVED";
+        profile?["payoutConfigured"] == true) {
+      return "APPROVED";
+    }
     final submitted =
         (profile?["payoutMethod"]?.toString().isNotEmpty ?? false) ||
             (profile?["bankAccountLast4"]?.toString().isNotEmpty ?? false) ||

@@ -48,6 +48,16 @@ public class NotificationController {
         return view(notifications.save(notification));
     }
 
+    @PostMapping("/read-all")
+    public Map<String, Object> markAllRead(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        UserAccount user = requireUser(authorization);
+        List<AppNotification> unread = notifications.findByRecipientAndReadFalse(user);
+        unread.forEach(AppNotification::markRead);
+        notifications.saveAll(unread);
+        return Map.of("marked", unread.size());
+    }
+
     @GetMapping("/preferences")
     public Map<String, Object> preferences(@RequestHeader(value = "Authorization", required = false) String authorization) {
         UserAccount user = requireUser(authorization);
