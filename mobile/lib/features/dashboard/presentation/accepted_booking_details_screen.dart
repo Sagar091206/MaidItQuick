@@ -1,8 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/brand_theme.dart';
 import '../../auth/data/auth_repository.dart';
+import '../../support/presentation/support_screen.dart';
 import '../data/partner_repository.dart';
 
 class AcceptedBookingDetailsScreen extends StatefulWidget {
@@ -320,7 +323,42 @@ class _AcceptedBookingDetailsScreenState
       return;
     }
 
-    _showMessage('Opening navigation to $_address');
+    final pin = _text(
+      const ['customerPinCode', 'pinCode', 'pincode'],
+      fallback: '',
+    );
+    final parts = <String>[_address];
+    if (pin.trim().isNotEmpty) parts.add(pin.trim());
+    final query = Uri.encodeComponent(parts.join(', '));
+
+    final isApple =
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS;
+    final uri = Uri.parse(
+      isApple
+          ? 'https://maps.apple.com/?q=$query'
+          : 'https://www.google.com/maps/search/?api=1&query=$query',
+    );
+
+    try {
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        _showMessage('Could not open maps for this address.');
+      }
+    } catch (_) {
+      _showMessage('Could not open navigation right now.');
+    }
+  }
+
+  Future<void> _openSupport() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => SupportScreen(
+          api: widget.api,
+          session: widget.session,
+        ),
+      ),
+    );
   }
 
   Future<void> _contactCustomer() async {
@@ -570,7 +608,7 @@ class _AcceptedBookingDetailsScreenState
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
-              onPressed: null,
+              onPressed: _openSupport,
               icon: const Icon(Icons.support_agent_outlined),
               label: const Text('Contact support'),
             ),

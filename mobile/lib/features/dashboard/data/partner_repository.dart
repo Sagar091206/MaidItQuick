@@ -136,6 +136,9 @@ class PartnerRepository {
       _asMap(_api.post('/notifications/$notificationId/read', const {},
           token: token));
 
+  Future<Map<String, dynamic>> markAllNotificationsRead(String token) =>
+      _asMap(_api.post('/notifications/read-all', const {}, token: token));
+
   Future<Map<String, dynamic>> fetchBooking(String token, String bookingId) =>
       _asMap(_api.get('/bookings/$bookingId', token: token));
 
@@ -167,6 +170,13 @@ class PartnerRepository {
     String bookingId,
   ) =>
       _asMap(_api.post('/instant-bookings/$bookingId/accept', const {},
+          token: token));
+
+  Future<Map<String, dynamic>> rejectInstantBooking(
+    String token,
+    String bookingId,
+  ) =>
+      _asMap(_api.post('/instant-bookings/$bookingId/reject', const {},
           token: token));
 
   Future<Map<String, dynamic>> startJourney(String token, String bookingId) =>

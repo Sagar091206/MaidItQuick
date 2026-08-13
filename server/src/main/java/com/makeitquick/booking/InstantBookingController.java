@@ -33,12 +33,13 @@ public class InstantBookingController {
     private final SessionResolver sessions;
     private final WorkerSafetyService workerSafety;
     private final NotificationService notifications;
+    private final InstantRejectionRepository rejections;
 
     InstantBookingController(BookingRepository bookings, SavedAddressRepository addresses,
                              SessionResolver sessions, WorkerSafetyService workerSafety,
-                             NotificationService notifications) {
+                             NotificationService notifications, InstantRejectionRepository rejections) {
         this.bookings = bookings; this.addresses = addresses; this.sessions = sessions;
-        this.workerSafety = workerSafety; this.notifications = notifications;
+        this.workerSafety = workerSafety; this.notifications = notifications; this.rejections = rejections;
     }
 
     @PostMapping
@@ -62,8 +63,11 @@ public class InstantBookingController {
     public List<Map<String,Object>> requests(@RequestHeader("Authorization") String header) {
         UserAccount worker = worker(header);
         if (!workerSafety.eligibleForDispatch(worker)) return List.of();
+        var rejected = rejections.findByWorkerId(worker.getId()).stream()
+                .map(InstantRejection::getBookingId).collect(java.util.stream.Collectors.toSet());
         return bookings.findByStatusOrderByIdDesc(BookingStatus.SEARCHING).stream()
-                .filter(this::live).filter(b -> b.getPaymentStatus() == PaymentStatus.PAID).map(this::view).toList();
+                .filter(this::live).filter(b -> b.getPaymentStatus() == PaymentStatus.PAID)
+                .filter(b -> !rejected.contains(b.getId())).map(this::view).toList();
     }
 
     @PostMapping("/{id}/accept")
@@ -79,6 +83,20 @@ public class InstantBookingController {
         notifications.send(saved.getCustomer(), NotificationType.BOOKING, "Maid assigned", worker.getName()+" accepted your instant cleaning request.");
         notifications.send(worker, NotificationType.WORKER_ASSIGNMENT, "Instant booking accepted", "Open the booking to view full service details.");
         return view(saved);
+    }
+
+    @PostMapping("/{id}/reject")
+    @Transactional
+    public Map<String,Object> reject(@RequestHeader("Authorization") String header, @PathVariable Long id) {
+        UserAccount worker = worker(header);
+        if (!workerSafety.eligibleForDispatch(worker)) throw new ResponseStatusException(HttpStatus.CONFLICT, "You are not eligible to receive bookings");
+        Booking booking = bookings.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Instant booking not found"));
+        if (!live(booking) || booking.getStatus() != BookingStatus.SEARCHING)
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This booking is no longer available");
+        if (!rejections.existsByBookingIdAndWorkerId(id, worker.getId())) {
+            rejections.save(new InstantRejection(id, worker.getId()));
+        }
+        return view(booking);
     }
 
     private boolean live(Booking booking) { if (booking.getExpiresAt()!=null && Instant.now().isAfter(booking.getExpiresAt())) { booking.expire(); bookings.save(booking); return false; } return true; }
