@@ -33,12 +33,14 @@ public class InstantBookingController {
     private final SessionResolver sessions;
     private final WorkerSafetyService workerSafety;
     private final NotificationService notifications;
+    private final BookingEventRepository bookingEvents;
 
     InstantBookingController(BookingRepository bookings, SavedAddressRepository addresses,
                              SessionResolver sessions, WorkerSafetyService workerSafety,
-                             NotificationService notifications) {
+                             NotificationService notifications, BookingEventRepository bookingEvents) {
         this.bookings = bookings; this.addresses = addresses; this.sessions = sessions;
         this.workerSafety = workerSafety; this.notifications = notifications;
+        this.bookingEvents = bookingEvents;
     }
 
     @PostMapping
@@ -71,11 +73,34 @@ public class InstantBookingController {
     public Map<String,Object> accept(@RequestHeader("Authorization") String header, @PathVariable Long id) {
         UserAccount worker = worker(header);
         if (!workerSafety.eligibleForDispatch(worker)) throw new ResponseStatusException(HttpStatus.CONFLICT, "You are not eligible to receive bookings");
-        Booking booking = bookings.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Instant booking not found"));
-        if (booking.getStatus() != BookingStatus.SEARCHING || !live(booking)) throw new ResponseStatusException(HttpStatus.CONFLICT, "This booking has already been accepted or expired");
+        Booking booking = bookings.findByIdForUpdate(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Instant booking not found"));
         if (booking.getPaymentStatus() != PaymentStatus.PAID) throw new ResponseStatusException(HttpStatus.CONFLICT, "Customer payment is pending");
-        booking.assign(worker);
+
+        if (booking.getStatus() == BookingStatus.ACCEPTED
+                && booking.getWorker() != null
+                && booking.getWorker().getId().equals(worker.getId())) {
+            return view(booking);
+        }
+
+        if (booking.getStatus() == BookingStatus.ASSIGNED) {
+            // Compatibility for instant bookings created before payment stopped
+            // auto-reserving a worker. Only that reserved worker may accept it.
+            if (booking.getWorker() == null || !booking.getWorker().getId().equals(worker.getId())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "This booking is reserved for another worker");
+            }
+        } else if (booking.getStatus() == BookingStatus.SEARCHING) {
+            if (!live(booking)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "This booking request has expired");
+            }
+            booking.assign(worker);
+        } else {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "This booking has already been accepted or is no longer available");
+        }
+
+        booking.accept();
         Booking saved = bookings.saveAndFlush(booking);
+        bookingEvents.save(new BookingEvent(saved, BookingStatus.ACCEPTED,
+                "Worker " + worker.getName() + " accepted the instant booking"));
         notifications.send(saved.getCustomer(), NotificationType.BOOKING, "Maid assigned", worker.getName()+" accepted your instant cleaning request.");
         notifications.send(worker, NotificationType.WORKER_ASSIGNMENT, "Instant booking accepted", "Open the booking to view full service details.");
         return view(saved);

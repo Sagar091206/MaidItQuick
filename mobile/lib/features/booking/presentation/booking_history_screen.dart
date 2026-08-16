@@ -26,19 +26,6 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
   List<CustomerBooking> _bookings = const [];
   bool _loading = true;
   String? _error;
-  String _filter = 'ALL';
-
-  static const _filters = [
-    ('ALL', 'All'),
-    ('REQUESTED', 'Requested'),
-    ('ASSIGNED', 'Awaiting acceptance'),
-    ('ACCEPTED', 'Accepted'),
-    ('ON_THE_WAY', 'On the way'),
-    ('ARRIVED', 'Arrived'),
-    ('IN_PROGRESS', 'In progress'),
-    ('COMPLETED', 'Completed'),
-    ('CANCELLED', 'Cancelled'),
-  ];
 
   @override
   void initState() {
@@ -62,11 +49,6 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  List<CustomerBooking> get _visible {
-    if (_filter == 'ALL') return _bookings;
-    return _bookings.where((booking) => booking.status == _filter).toList();
   }
 
   Future<void> _openDetails(CustomerBooking booking) async {
@@ -111,57 +93,27 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
                       ),
                     ),
                   )
-                : Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-                        child: SizedBox(
-                          height: 40,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: _filters.length,
+                : RefreshIndicator(
+                    onRefresh: _load,
+                    child: _bookings.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.all(20),
+                            children: const [
+                              _EmptyBookings(),
+                            ],
+                          )
+                        : ListView.separated(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.all(20),
+                            itemCount: _bookings.length,
                             separatorBuilder: (_, __) =>
-                                const SizedBox(width: 8),
-                            itemBuilder: (context, index) {
-                              final filter = _filters[index];
-                              final selected = filter.$1 == _filter;
-                              return FilterChip(
-                                label: Text(filter.$2),
-                                selected: selected,
-                                onSelected: (_) =>
-                                    setState(() => _filter = filter.$1),
-                              );
-                            },
+                                const SizedBox(height: 12),
+                            itemBuilder: (context, index) => _BookingTile(
+                              booking: _bookings[index],
+                              onTap: () => _openDetails(_bookings[index]),
+                            ),
                           ),
-                        ),
-                      ),
-                      Expanded(
-                        child: RefreshIndicator(
-                          onRefresh: _load,
-                          child: _visible.isEmpty
-                              ? ListView(
-                                  physics:
-                                      const AlwaysScrollableScrollPhysics(),
-                                  padding: const EdgeInsets.all(20),
-                                  children: const [
-                                    _EmptyBookings(),
-                                  ],
-                                )
-                              : ListView.separated(
-                                  physics:
-                                      const AlwaysScrollableScrollPhysics(),
-                                  padding: const EdgeInsets.all(20),
-                                  itemCount: _visible.length,
-                                  separatorBuilder: (_, __) =>
-                                      const SizedBox(height: 12),
-                                  itemBuilder: (context, index) => _BookingTile(
-                                    booking: _visible[index],
-                                    onTap: () => _openDetails(_visible[index]),
-                                  ),
-                                ),
-                        ),
-                      ),
-                    ],
                   ),
       ),
     );
