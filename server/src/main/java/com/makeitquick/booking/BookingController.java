@@ -147,8 +147,8 @@ public class BookingController {
         recordEvent(b, BookingStatus.ASSIGNED, "Assigned to " + w.getName());
         notifications.send(w, NotificationType.WORKER_ASSIGNMENT, "New job assigned",
                 "You have been assigned " + b.getService() + " for " + b.getScheduledFor() + ".");
-        notifications.send(b.getCustomer(), NotificationType.BOOKING, "Worker assigned",
-                "A worker has been assigned to your " + b.getService() + " booking.");
+        notifications.send(b.getCustomer(), NotificationType.BOOKING, "Awaiting worker acceptance",
+                "Your " + b.getService() + " request was sent to a worker. We will notify you after they accept.");
         return view(b);
     }
 

@@ -470,7 +470,7 @@ class _DetailsBody extends StatelessWidget {
         _Section(
           title: 'Worker',
           icon: Icons.person_pin_circle_outlined,
-          child: Text(booking.worker),
+          child: Text(booking.customerWorkerLabel),
         ),
         _Section(
           title: 'Details',
@@ -612,7 +612,7 @@ class _BookingProgressTimeline extends StatelessWidget {
   final CustomerBooking booking;
 
   static const _serviceSteps = <(String, String)>[
-    ('ASSIGNED', 'Assigned'),
+    ('ASSIGNED', 'Request sent'),
     ('ACCEPTED', 'Accepted'),
     ('ON_THE_WAY', 'On the way'),
     ('ARRIVED', 'Arrived'),
@@ -799,7 +799,9 @@ class _BookingProgressRow extends StatelessWidget {
                     style: theme.textTheme.bodySmall?.copyWith(
                         color: reached || current ? context.brandMuted : muted),
                   ),
-                  if (event != null && event!.note.isNotEmpty) ...[
+                  if (event != null &&
+                      event!.note.isNotEmpty &&
+                      !(status == 'ASSIGNED' && current)) ...[
                     const SizedBox(height: 3),
                     Text(
                       event!.note,
@@ -838,7 +840,7 @@ class _StatusBanner extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    status.replaceAll('_', ' '),
+                    customerBookingStatusLabel(status),
                     style: TextStyle(
                       color: scheme.onPrimaryContainer,
                       fontSize: 17,
@@ -867,7 +869,7 @@ String _statusHint(String status) {
     case 'REQUESTED':
       return 'Complete the payment — a partner is assigned automatically after payment.';
     case 'ASSIGNED':
-      return 'Payment received. A partner has been assigned to your booking.';
+      return 'Your request was sent to an available worker. Their details appear after they accept.';
     case 'ACCEPTED':
       return 'Your partner has accepted the job.';
     case 'ON_THE_WAY':

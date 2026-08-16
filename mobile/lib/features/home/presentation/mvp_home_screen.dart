@@ -5,6 +5,7 @@ import '../../../core/brand_theme.dart';
 import '../../../shared/widgets/app_states.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../booking/data/service_catalog_repository.dart';
+import '../../booking/data/booking_repository.dart';
 import '../../booking/presentation/booking_details_screen.dart';
 import '../../services/presentation/service_details_screen.dart';
 import '../data/customer_dashboard_repository.dart';
@@ -653,7 +654,7 @@ class _ActiveBookingHero extends StatelessWidget {
                         fontSize: 17, fontWeight: FontWeight.w800),
                   ),
                 ),
-                StatusPill(status: booking.status),
+                StatusPill(status: customerBookingStatusLabel(booking.status)),
               ],
             ),
             const SizedBox(height: 12),
@@ -699,7 +700,7 @@ class _BookingCard extends StatelessWidget {
                         fontSize: 17, fontWeight: FontWeight.w800),
                   ),
                 ),
-                StatusPill(status: booking.status),
+                StatusPill(status: customerBookingStatusLabel(booking.status)),
               ],
             ),
             const SizedBox(height: 12),
