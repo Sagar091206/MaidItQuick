@@ -430,7 +430,7 @@ class _DetailsBody extends StatelessWidget {
             ),
           ),
         const SizedBox(height: 20),
-        _Timeline(events: booking.events),
+        _BookingProgressTimeline(booking: booking),
         const SizedBox(height: 8),
         _Section(
           title: 'Services',
@@ -606,15 +606,39 @@ class _RefundStatus extends StatelessWidget {
   }
 }
 
-class _Timeline extends StatelessWidget {
-  const _Timeline({required this.events});
+class _BookingProgressTimeline extends StatelessWidget {
+  const _BookingProgressTimeline({required this.booking});
 
-  final List<BookingEvent> events;
+  final CustomerBooking booking;
+
+  static const _serviceSteps = <(String, String)>[
+    ('ASSIGNED', 'Assigned'),
+    ('ACCEPTED', 'Accepted'),
+    ('ON_THE_WAY', 'On the way'),
+    ('ARRIVED', 'Arrived'),
+    ('IN_PROGRESS', 'In progress'),
+    ('COMPLETED', 'Completed'),
+  ];
 
   @override
   Widget build(BuildContext context) {
-    if (events.isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
+    final cancelled = booking.status == 'CANCELLED';
+    final steps = <(String, String)>[
+      ..._serviceSteps,
+      if (cancelled) ('CANCELLED', 'Cancelled'),
+    ];
+    final reachedStatuses = booking.events.map((event) => event.status).toSet();
+
+    // Older bookings may not have a complete event history. The current status
+    // still lets us mark every preceding lifecycle step as reached.
+    final currentIndex =
+        _serviceSteps.indexWhere((step) => step.$1 == booking.status);
+    if (currentIndex >= 0) {
+      reachedStatuses.addAll(
+        _serviceSteps.take(currentIndex + 1).map((step) => step.$1),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),
       child: Column(
@@ -625,7 +649,7 @@ class _Timeline extends StatelessWidget {
               Icon(Icons.timeline_outlined,
                   size: 20, color: theme.colorScheme.primary),
               const SizedBox(width: 8),
-              const Text('Booking timeline',
+              const Text('Track booking',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
             ],
           ),
@@ -636,10 +660,14 @@ class _Timeline extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  for (var i = 0; i < events.length; i++) ...[
-                    _TimelineRow(
-                      event: events[i],
-                      isLast: i == events.length - 1,
+                  for (var i = 0; i < steps.length; i++) ...[
+                    _BookingProgressRow(
+                      status: steps[i].$1,
+                      label: steps[i].$2,
+                      event: _eventFor(steps[i].$1),
+                      reached: reachedStatuses.contains(steps[i].$1),
+                      current: booking.status == steps[i].$1,
+                      isLast: i == steps.length - 1,
                     ),
                   ],
                 ],
@@ -650,32 +678,77 @@ class _Timeline extends StatelessWidget {
       ),
     );
   }
+
+  BookingEvent? _eventFor(String status) {
+    for (final event in booking.events.reversed) {
+      if (event.status == status) return event;
+    }
+    return null;
+  }
 }
 
-class _TimelineRow extends StatelessWidget {
-  const _TimelineRow({required this.event, required this.isLast});
+class _BookingProgressRow extends StatelessWidget {
+  const _BookingProgressRow({
+    required this.status,
+    required this.label,
+    required this.event,
+    required this.reached,
+    required this.current,
+    required this.isLast,
+  });
 
-  final BookingEvent event;
+  final String status;
+  final String label;
+  final BookingEvent? event;
+  final bool reached;
+  final bool current;
   final bool isLast;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = context.scheme;
-    final active =
-        event.status == 'CANCELLED' ? theme.colorScheme.error : scheme.primary;
+    final cancelled = status == 'CANCELLED';
+    final active = cancelled ? theme.colorScheme.error : scheme.primary;
+    final muted = context.brandMuted.withValues(alpha: 0.55);
+    final connectorColor = reached ? active : muted.withValues(alpha: 0.45);
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Column(
             children: [
-              Icon(Icons.circle, size: 12, color: active),
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: reached && !current ? active : Colors.transparent,
+                  border: Border.all(
+                    color: reached || current ? active : muted,
+                    width: current ? 3 : 1.5,
+                  ),
+                ),
+                child: reached && !current
+                    ? const Icon(Icons.check, size: 14, color: Colors.white)
+                    : current
+                        ? Center(
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: active,
+                              ),
+                            ),
+                          )
+                        : null,
+              ),
               if (!isLast)
                 Expanded(
                   child: Container(
                     width: 2,
-                    color: scheme.primary.withValues(alpha: 0.2),
+                    color: connectorColor,
                   ),
                 ),
             ],
@@ -687,16 +760,53 @@ class _TimelineRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    event.note,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          label,
+                          style: TextStyle(
+                            fontWeight:
+                                current ? FontWeight.w800 : FontWeight.w700,
+                            color: reached || current ? null : muted,
+                          ),
+                        ),
+                      ),
+                      if (current)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: active.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            'Current',
+                            style: TextStyle(
+                              color: active,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    _displayDate(event.createdAt),
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: context.brandMuted),
+                    event == null
+                        ? (current ? 'Current status' : 'Pending')
+                        : _displayDate(event!.createdAt),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                        color: reached || current ? context.brandMuted : muted),
                   ),
+                  if (event != null && event!.note.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      event!.note,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: context.brandMuted),
+                    ),
+                  ],
                 ],
               ),
             ),

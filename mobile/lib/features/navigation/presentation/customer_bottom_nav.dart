@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/api_client.dart';
-import '../../../shared/widgets/app_states.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../booking/presentation/booking_history_screen.dart';
 import '../../booking/data/customer_addresses_repository.dart';
 import '../../booking/presentation/booking_wizard_screen.dart';
 import '../../home/presentation/mvp_home_screen.dart';
 import '../../instant/presentation/instant_maid_screen.dart';
+import '../../notifications/presentation/customer_alerts_screen.dart';
 import '../../profile/data/customer_profile_repository.dart';
 import '../../profile/presentation/customer_profile_screen.dart';
 import '../../profile/presentation/profile_tab.dart';
@@ -121,7 +121,7 @@ class _CustomerBottomNavState extends State<CustomerBottomNav> {
         api: api,
         session: session,
       ),
-      const _NotificationsPlaceholder(),
+      CustomerAlertsScreen(api: api, session: session),
       ProfileTab(
         api: api,
         session: session,
@@ -159,31 +159,6 @@ class _CustomerBottomNavState extends State<CustomerBottomNav> {
             label: 'Profile',
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Placeholder until the notifications inbox ships.
-class _NotificationsPlaceholder extends StatelessWidget {
-  const _NotificationsPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Alerts')),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: const [
-            EmptyStateView(
-              icon: Icons.notifications_none,
-              title: 'No alerts yet',
-              message:
-                  'Booking updates, OTPs and service notifications will appear here.',
-            ),
-          ],
-        ),
       ),
     );
   }

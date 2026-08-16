@@ -327,6 +327,7 @@ public class WorkerSafetyController {
         view.put("workingEndTime", profile.getWorkingEndTime());
         view.put("readyForJobs", profile.isReadyForJobs());
         String applicationStatus = profile.isReadyForJobs() ? "APPROVED"
+                : profile.hasRejectedChecks() ? "REJECTED"
                 : profile.hasSubmittedApprovalPack() ? "UNDER_REVIEW" : "INCOMPLETE";
         int stageIndex = profile.isReadyForJobs() ? 6
                 : profile.hasPayoutDetails() ? 4
@@ -334,6 +335,11 @@ public class WorkerSafetyController {
                 : profile.isConsentAccepted() ? 1 : 0;
         view.put("applicationStatus", applicationStatus);
         view.put("outcome", applicationStatus);
+        if (profile.hasRejectedChecks()) {
+            view.put("rejectionReason",
+                    "One or more KYC checks were rejected. Replace the rejected details and resubmit them for review.");
+            view.put("correctionSection", firstRejectedSection(profile));
+        }
         view.put("stageIndex", stageIndex);
         view.put("lastUpdatedAt", profile.getServiceReadinessSubmittedAt() != null
                 ? profile.getServiceReadinessSubmittedAt() : profile.getConsentAcceptedAt());
@@ -341,6 +347,17 @@ public class WorkerSafetyController {
         view.put("longitude", profile.getLastLongitude());
         view.put("locationUpdatedAt", profile.getLocationUpdatedAt());
         return view;
+    }
+
+    private String firstRejectedSection(WorkerProfile profile) {
+        if (profile.getAddressStatus() == VerificationStatus.REJECTED) return "address";
+        if (profile.getKycStatus() == VerificationStatus.REJECTED
+                || profile.getPanStatus() == VerificationStatus.REJECTED
+                || profile.getSelfieStatus() == VerificationStatus.REJECTED
+                || profile.getBackgroundCheckStatus() == VerificationStatus.REJECTED) {
+            return "identity";
+        }
+        return "payout";
     }
 
     private String blankToNull(String value) {

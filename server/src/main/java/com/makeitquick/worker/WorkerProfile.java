@@ -204,6 +204,14 @@ public class WorkerProfile {
         payoutDetailsVerified = false;
     }
 
+    public boolean hasRejectedChecks() {
+        return getKycStatus() == VerificationStatus.REJECTED
+                || getPanStatus() == VerificationStatus.REJECTED
+                || getSelfieStatus() == VerificationStatus.REJECTED
+                || getAddressStatus() == VerificationStatus.REJECTED
+                || getBackgroundCheckStatus() == VerificationStatus.REJECTED;
+    }
+
     public boolean hasSubmittedApprovalPack() {
         return consentAccepted
                 && getKycStatus() == VerificationStatus.PENDING

@@ -73,8 +73,8 @@ public class BookingAssignmentService {
         bookings.save(b);
         notifications.sendBooking(worker, NotificationType.WORKER_ASSIGNMENT, "New booking request",
                 "You have been assigned " + b.getService() + " for " + b.getScheduledFor() + ".", b.getId());
-        notifications.send(b.getCustomer(), NotificationType.BOOKING, "Worker assigned",
-                "A worker has been assigned to your " + b.getService() + " booking.");
+        notifications.sendBooking(b.getCustomer(), NotificationType.BOOKING, "Worker assigned",
+                "A verified worker has been assigned to your " + b.getService() + " booking.", b.getId());
         return best;
     }
 
