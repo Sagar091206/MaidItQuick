@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/api_client.dart';
 import '../../../core/brand_theme.dart';
+import '../../auth/data/auth_repository.dart';
+import '../../support/presentation/support_screen.dart';
 
 class PartnerProfileTab extends StatelessWidget {
   const PartnerProfileTab({
@@ -8,11 +11,15 @@ class PartnerProfileTab extends StatelessWidget {
     required this.dashboard,
     required this.onLogout,
     required this.onManageVerification,
+    required this.api,
+    required this.session,
   });
 
   final Map<String, dynamic> dashboard;
   final VoidCallback onLogout;
   final ValueChanged<int>? onManageVerification;
+  final ApiClient api;
+  final Session session;
 
   String _statusFor(List<String> keys) {
     for (final key in keys) {
@@ -214,11 +221,19 @@ class PartnerProfileTab extends StatelessWidget {
           Card(
             child: Column(
               children: [
-                const ListTile(
-                  leading: Icon(Icons.support_agent_outlined),
-                  title: Text('Support'),
-                  subtitle: Text('Get help with your partner account'),
-                  trailing: Icon(Icons.chevron_right),
+                ListTile(
+                  leading: const Icon(Icons.support_agent_outlined),
+                  title: const Text('Support'),
+                  subtitle: const Text('Get help with your partner account'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute(
+                      builder: (_) => SupportScreen(
+                        api: api,
+                        session: session,
+                      ),
+                    ),
+                  ),
                 ),
                 const Divider(height: 1),
                 ListTile(

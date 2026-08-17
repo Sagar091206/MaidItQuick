@@ -10,7 +10,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import java.math.BigDecimal;
 import java.time.Instant;
 
 /** One payment attempt (ledger record) against a booking. */
@@ -22,8 +21,6 @@ public class Payment {
     @Column(nullable = false, length = 64) private String reference;
     @Column(nullable = false, length = 32) private String method;
     @Column(nullable = false) private int amountPaise;
-    /** Compatibility column retained from the legacy payments schema. */
-    @Column(name = "amount", nullable = false, precision = 12, scale = 2) private BigDecimal amount = BigDecimal.ZERO;
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 32)
     private PaymentStatus status = PaymentStatus.PENDING;
     @Column(length = 500) private String gatewayResponse;
@@ -37,7 +34,6 @@ public class Payment {
         this.reference = reference;
         this.method = method;
         this.amountPaise = amountPaise;
-        this.amount = BigDecimal.valueOf(amountPaise, 2);
     }
 
     public Long getId() { return id; }

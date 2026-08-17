@@ -34,13 +34,9 @@ registerModule("kyc", (el) => {
 
   async function load() {
     try {
-      // The table is filtered by the selected tab, but the tab badges always
-      // show totals for every KYC status.
-      const [list, all] = await Promise.all([
-        fetchAllPages("/partners", { status: state.status, query: state.query }),
-        fetchAllPages("/partners", {}),
-      ]);
+      const list = await fetchAllPages("/partners", { status: state.status, query: state.query });
       rows = list;
+      const all = state.status === "PENDING" ? list : await fetchAllPages("/partners", {});
       counts = {
         PENDING: all.filter((p) => p.kycStatus === "PENDING").length,
         APPROVED: all.filter((p) => p.kycStatus === "APPROVED").length,

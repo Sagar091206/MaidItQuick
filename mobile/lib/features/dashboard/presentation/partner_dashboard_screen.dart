@@ -124,6 +124,16 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen>
     }
   }
 
+  Future<void> _markNotificationRead(Map<String, dynamic> notification) async {
+    final id = notification['id']?.toString();
+    if (id == null || id.isEmpty) return;
+    await _partnerRepository.markNotificationRead(widget.session.token, id);
+  }
+
+  Future<void> _markAllNotificationsRead() async {
+    await _partnerRepository.markAllNotificationsRead(widget.session.token);
+  }
+
   Future<void> _setOnline(bool online) async {
     if (!_eligible) {
       _showMessage(
@@ -693,6 +703,10 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen>
               onRefresh: () => _loadDashboard(showMessage: false),
               onLogout: widget.onLogout,
               onManageVerification: widget.onManageVerification,
+              onMarkNotificationRead: _markNotificationRead,
+              onMarkAllNotificationsRead: _markAllNotificationsRead,
+              api: widget.api,
+              session: widget.session,
             ),
     );
   }
@@ -711,6 +725,10 @@ class _DashboardTabPage extends StatelessWidget {
     required this.onRefresh,
     required this.onLogout,
     required this.onManageVerification,
+    required this.onMarkNotificationRead,
+    required this.onMarkAllNotificationsRead,
+    required this.api,
+    required this.session,
   });
 
   final int index;
@@ -724,6 +742,11 @@ class _DashboardTabPage extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final VoidCallback onLogout;
   final ValueChanged<int>? onManageVerification;
+  final Future<void> Function(Map<String, dynamic> notification)
+      onMarkNotificationRead;
+  final Future<void> Function() onMarkAllNotificationsRead;
+  final ApiClient api;
+  final Session session;
 
   @override
   Widget build(BuildContext context) {
@@ -744,11 +767,15 @@ class _DashboardTabPage extends StatelessWidget {
           notifications: notifications,
           onRefresh: onRefresh,
           onOpenBooking: onOpenBooking,
+          onMarkRead: onMarkNotificationRead,
+          onMarkAllRead: onMarkAllNotificationsRead,
         ),
       4 => PartnerProfileTab(
           dashboard: dashboard,
           onLogout: onLogout,
           onManageVerification: onManageVerification,
+          api: api,
+          session: session,
         ),
       _ => const SizedBox.shrink(),
     };

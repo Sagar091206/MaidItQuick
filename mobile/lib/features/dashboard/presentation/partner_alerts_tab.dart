@@ -9,12 +9,20 @@ class PartnerAlertsTab extends StatefulWidget {
     required this.notifications,
     required this.onRefresh,
     required this.onOpenBooking,
+    required this.onMarkRead,
+    required this.onMarkAllRead,
   });
 
   final List<Map<String, dynamic>> pendingActions;
   final List<Map<String, dynamic>> notifications;
   final Future<void> Function() onRefresh;
   final ValueChanged<Map<String, dynamic>> onOpenBooking;
+
+  /// Persists the read state on the server for a single notification.
+  final Future<void> Function(Map<String, dynamic> notification) onMarkRead;
+
+  /// Marks every notification read on the server.
+  final Future<void> Function() onMarkAllRead;
 
   @override
   State<PartnerAlertsTab> createState() => _AlertsTabState();
@@ -145,16 +153,62 @@ class _AlertsTabState extends State<PartnerAlertsTab> {
   }
 
   void _markRead(Map<String, dynamic> item) {
-    setState(() => _readIds.add(_idOf(item)));
+    final id = _idOf(item);
+    if (_isRead(item)) return;
+
+    setState(() {
+      item['read'] = true;
+      _readIds.add(id);
+    });
+    _persistRead(item);
   }
 
-  void _markAllRead() {
+  Future<void> _persistRead(Map<String, dynamic> item) async {
+    try {
+      await widget.onMarkRead(item);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        item['read'] = false;
+        _readIds.remove(_idOf(item));
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update read state.')),
+      );
+    }
+  }
+
+  Future<void> _markAllRead() async {
+    if (_isReadCurrent()) return;
+
     setState(() {
       for (final item in _items) {
         _readIds.add(_idOf(item));
+        item['read'] = true;
       }
     });
+
+    try {
+      await widget.onMarkAllRead();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        for (final item in _items) {
+          if (item['_source'] == 'NOTIFICATION') {
+            item['read'] = false;
+            _readIds.remove(_idOf(item));
+          }
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update read state.')),
+      );
+    }
   }
+
+  bool _isReadCurrent() =>
+      _items.where((item) => item['_source'] == 'NOTIFICATION').isEmpty ||
+      _items.every((item) => _isRead(item));
 
   void _openItem(Map<String, dynamic> item) {
     _markRead(item);

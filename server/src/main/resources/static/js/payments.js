@@ -7,17 +7,12 @@ import { registerModule, crudPage, badge, statusSelectOptions, fetchAllPages } f
 import { escapeHtml, fmtDateTime, money, timeAgo } from "./utils.js";
 
 const STATUS = ["PENDING", "PAID", "REFUNDED", "FAILED"];
-const METHODS = ["CASH", "CARD", "ONLINE", "UPI", "WALLET", "BANK_TRANSFER"];
-
-// Customer payments use paise/reference/completedAt. Older records can have
-// a zero amount, so the linked booking is a safe fallback.
-const paymentAmount = (row) =>
-  Number(row.amountPaise || row.booking?.paymentAmountPaise || 0) / 100;
+const METHODS = ["CASH", "CARD", "ONLINE", "BANK_TRANSFER"];
 
 async function bookingOptions() {
   try {
     const list = await fetchAllPages("/bookings");
-    return list.map((b) => [b.id, `#${b.id} · ${b.customer?.name || "—"} · ${b.service || "—"}`]);
+    return list.map((b) => [b.id, `#${b.id} · ${b.customer?.name || "—"} · ${b.service?.name || "—"}`]);
   } catch {
     return [];
   }
@@ -41,27 +36,27 @@ registerModule("payments", (el) =>
             <span class="cell-avatar mono" style="font-size:12px">#${r.booking?.id || "?"}</span>
             <div>
               <div>${escapeHtml(r.booking?.customer?.name || "—")}</div>
-              <div class="meta">${escapeHtml(r.booking?.service || "—")}</div>
+              <div class="meta">${escapeHtml(r.booking?.service?.name || "—")}</div>
             </div>
           </div>`,
         exportValue: (r) => (r.booking ? `#${r.booking.id}` : ""),
         printValue: (r) => (r.booking ? `#${r.booking.id}` : ""),
       },
-      { key: "amount", title: "Amount", sortable: true, render: (r) => `<strong>${money(paymentAmount(r))}</strong>`, sortValue: paymentAmount },
+      { key: "amount", title: "Amount", sortable: true, render: (r) => `<strong>${money(r.amount)}</strong>`, sortValue: (r) => Number(r.amount) },
       { key: "method", title: "Method", sortable: true, render: (r) => badge(r.method) },
       { key: "status", title: "Status", sortable: true, render: (r) => badge(r.status) },
       {
         key: "transactionId",
         title: "Transaction ID",
-        render: (r) => `<span class="mono muted ellipsis" style="display:inline-block;max-width:150px">${escapeHtml(r.reference || r.transactionId || "—")}</span>`,
+        render: (r) => `<span class="mono muted ellipsis" style="display:inline-block;max-width:150px">${escapeHtml(r.transactionId || "—")}</span>`,
       },
       {
         key: "paidAt",
         title: "Paid at",
         sortable: true,
         align: "right",
-        render: (r) => (r.completedAt || r.paidAt || r.booking?.paidAt ? fmtDateTime(r.completedAt || r.paidAt || r.booking?.paidAt) : `<span class="muted">—</span>`),
-        sortValue: (r) => r.completedAt || r.paidAt || r.booking?.paidAt,
+        render: (r) => (r.paidAt ? fmtDateTime(r.paidAt) : `<span class="muted">—</span>`),
+        sortValue: (r) => r.paidAt,
       },
     ],
     fields: [
