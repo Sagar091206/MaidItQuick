@@ -8,4 +8,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 interface NotificationRepository extends JpaRepository<AppNotification, Long> {
     List<AppNotification> findByRecipientOrderByCreatedAtDesc(UserAccount recipient);
     Optional<AppNotification> findByIdAndRecipient(Long id, UserAccount recipient);
+    List<AppNotification> findByRecipientAndReadFalse(UserAccount recipient);
 }

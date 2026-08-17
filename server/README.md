@@ -32,3 +32,17 @@ The first run creates the configured admin account only if its email does not al
 With the server running, open [Swagger UI](http://localhost:8080/swagger-ui.html). The machine-readable OpenAPI document is available at [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs).
 
 For protected endpoints, sign in through `POST /api/auth/login`, copy the returned token, then use **Authorize** in Swagger UI and enter `Bearer <token>`.
+### macOS/Linux helper
+
+To start the server with the H2 in-memory database:
+
+```bash
+chmod +x run-local.sh
+./run-local.sh
+```
+
+To use a different port:
+
+```bash
+./run-local.sh 8081
+```
