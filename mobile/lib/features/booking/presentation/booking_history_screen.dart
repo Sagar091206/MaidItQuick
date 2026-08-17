@@ -26,19 +26,6 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
   List<CustomerBooking> _bookings = const [];
   bool _loading = true;
   String? _error;
-  String _filter = 'ALL';
-
-  static const _filters = [
-    ('ALL', 'All'),
-    ('REQUESTED', 'Requested'),
-    ('ASSIGNED', 'Assigned'),
-    ('ACCEPTED', 'Accepted'),
-    ('ON_THE_WAY', 'On the way'),
-    ('ARRIVED', 'Arrived'),
-    ('IN_PROGRESS', 'In progress'),
-    ('COMPLETED', 'Completed'),
-    ('CANCELLED', 'Cancelled'),
-  ];
 
   @override
   void initState() {
@@ -62,11 +49,6 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  List<CustomerBooking> get _visible {
-    if (_filter == 'ALL') return _bookings;
-    return _bookings.where((booking) => booking.status == _filter).toList();
   }
 
   Future<void> _openDetails(CustomerBooking booking) async {
@@ -111,58 +93,27 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
                       ),
                     ),
                   )
-                : Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-                        child: SizedBox(
-                          height: 40,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: _filters.length,
+                : RefreshIndicator(
+                    onRefresh: _load,
+                    child: _bookings.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.all(20),
+                            children: const [
+                              _EmptyBookings(),
+                            ],
+                          )
+                        : ListView.separated(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.all(20),
+                            itemCount: _bookings.length,
                             separatorBuilder: (_, __) =>
-                                const SizedBox(width: 8),
-                            itemBuilder: (context, index) {
-                              final filter = _filters[index];
-                              final selected = filter.$1 == _filter;
-                              return FilterChip(
-                                label: Text(filter.$2),
-                                selected: selected,
-                                onSelected: (_) => setState(
-                                    () => _filter = filter.$1),
-                              );
-                            },
+                                const SizedBox(height: 12),
+                            itemBuilder: (context, index) => _BookingTile(
+                              booking: _bookings[index],
+                              onTap: () => _openDetails(_bookings[index]),
+                            ),
                           ),
-                        ),
-                      ),
-                      Expanded(
-                        child: RefreshIndicator(
-                          onRefresh: _load,
-                          child: _visible.isEmpty
-                              ? ListView(
-                                  physics: const AlwaysScrollableScrollPhysics(),
-                                  padding: const EdgeInsets.all(20),
-                                  children: const [
-                                    _EmptyBookings(),
-                                  ],
-                                )
-                              : ListView.separated(
-                                  physics:
-                                      const AlwaysScrollableScrollPhysics(),
-                                  padding: const EdgeInsets.all(20),
-                                  itemCount: _visible.length,
-                                  separatorBuilder: (_, __) =>
-                                      const SizedBox(height: 12),
-                                  itemBuilder: (context, index) =>
-                                      _BookingTile(
-                                    booking: _visible[index],
-                                    onTap: () =>
-                                        _openDetails(_visible[index]),
-                                  ),
-                                ),
-                        ),
-                      ),
-                    ],
                   ),
       ),
     );
@@ -188,30 +139,30 @@ class _BookingTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'MIQ-${booking.id}',
-                          style: const TextStyle(
-                              fontSize: 17, fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                      if (booking.needsPayment) ...[
-                        StatusPill(
-                          status: 'Payment pending',
-                          color: theme.colorScheme.tertiary,
-                        ),
-                        const SizedBox(width: 6),
-                      ],
-                      _StatusPill(status: booking.status),
-                    ],
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'MIQ-${booking.id}',
+                      style: const TextStyle(
+                          fontSize: 17, fontWeight: FontWeight.w800),
+                    ),
                   ),
+                  if (booking.needsPayment) ...[
+                    StatusPill(
+                      status: 'Payment pending',
+                      color: theme.colorScheme.tertiary,
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  _StatusPill(status: booking.status),
+                ],
+              ),
               const SizedBox(height: 10),
               Text(
                 booking.service,
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w700),
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 6),
               Text(
@@ -234,7 +185,8 @@ class _BookingTile extends StatelessWidget {
                     icon: Icons.timer_outlined,
                     label: '${booking.durationMinutes} min',
                   ),
-                  if (booking.worker != 'Unassigned')
+                  if (booking.workerHasAccepted &&
+                      booking.worker != 'Unassigned')
                     _BookingMeta(
                       icon: Icons.person_pin_circle_outlined,
                       label: booking.worker,
@@ -265,7 +217,7 @@ class _StatusPill extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         child: Text(
-          status.replaceAll('_', ' '),
+          customerBookingStatusLabel(status),
           style: TextStyle(
             color: scheme.primary,
             fontSize: 12,
@@ -321,13 +273,11 @@ class _EmptyBookings extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('No bookings here',
-                      style:
-                          const TextStyle(fontWeight: FontWeight.w800)),
+                      style: const TextStyle(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 4),
                   Text(
                     'Book a cleaning service from the dashboard and it will appear here.',
-                    style: TextStyle(
-                        color: context.brandMuted, height: 1.3),
+                    style: TextStyle(color: context.brandMuted, height: 1.3),
                   ),
                 ],
               ),

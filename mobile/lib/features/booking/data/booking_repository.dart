@@ -240,7 +240,22 @@ class CustomerBooking {
   bool get canRate => status == 'COMPLETED' && rating == 0;
 
   bool get isCompleted => status == 'COMPLETED';
+
+  bool get workerHasAccepted =>
+      status == 'ACCEPTED' ||
+      status == 'ON_THE_WAY' ||
+      status == 'ARRIVED' ||
+      status == 'IN_PROGRESS' ||
+      status == 'COMPLETED';
+
+  String get customerWorkerLabel =>
+      workerHasAccepted ? worker : 'Pending worker acceptance';
 }
+
+String customerBookingStatusLabel(String status) => switch (status) {
+      'ASSIGNED' => 'AWAITING ACCEPTANCE',
+      _ => status.replaceAll('_', ' '),
+    };
 
 /// Payment intent created for a booking before executing the payment.
 class PayIntent {

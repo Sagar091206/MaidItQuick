@@ -28,6 +28,7 @@ import org.springframework.web.server.ResponseStatusException;
  */
 @Service
 public class PaymentService {
+    private static final Duration INSTANT_SEARCH_WINDOW = Duration.ofHours(1);
 
     /** Unpaid bookings expire after this window; payment is refused afterwards. */
     public static final Duration UNPAID_TIMEOUT = Duration.ofHours(24);
@@ -104,12 +105,17 @@ public class PaymentService {
         payments.save(intent);
 
         booking.markPaid(method, intent.getAmountPaise());
+        // Creation has a short checkout timeout, but workers need a separate
+        // window after successful payment in which to discover and accept it.
+        booking.extendInstantSearchUntil(Instant.now().plus(INSTANT_SEARCH_WINDOW));
         Booking paid = bookings.save(booking);
 
         notifications.send(paid.getCustomer(), NotificationType.BOOKING,
                 "Payment received",
                 "We received ₹" + (intent.getAmountPaise() / 100) + " for booking " + paid.getService()
-                        + ". A partner is being assigned.");
+                        + (paid.isInstantBooking()
+                        ? ". We are notifying available workers now."
+                        : ". A partner is being assigned."));
         assignBestWorker(paid);
         return Map.of(
                 "payment", paymentView(intent),
@@ -119,6 +125,10 @@ public class PaymentService {
     /** Auto-assign a partner now that payment is complete (business rule). */
     private void assignBestWorker(Booking b) {
         if (b.getPaymentStatus() != PaymentStatus.PAID) return;
+        // Instant requests are broadcast to eligible workers. The first worker
+        // who explicitly accepts owns the booking; payment must not reserve one
+        // automatically before that action.
+        if (b.isInstantBooking()) return;
         List<String> services = bookingServices.findByBookingIdOrderByIdAsc(b.getId()).stream()
                 .map(com.makeitquick.booking.BookingService::getServiceName).toList();
         assigner.assignBest(b, services, notifications);

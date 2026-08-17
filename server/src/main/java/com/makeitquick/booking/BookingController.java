@@ -147,8 +147,8 @@ public class BookingController {
         recordEvent(b, BookingStatus.ASSIGNED, "Assigned to " + w.getName());
         notifications.send(w, NotificationType.WORKER_ASSIGNMENT, "New job assigned",
                 "You have been assigned " + b.getService() + " for " + b.getScheduledFor() + ".");
-        notifications.send(b.getCustomer(), NotificationType.BOOKING, "Worker assigned",
-                "A worker has been assigned to your " + b.getService() + " booking.");
+        notifications.send(b.getCustomer(), NotificationType.BOOKING, "Awaiting worker acceptance",
+                "Your " + b.getService() + " request was sent to a worker. We will notify you after they accept.");
         return view(b);
     }
 
@@ -297,8 +297,8 @@ public class BookingController {
         b.enRoute();
         b = repo.save(b);
         recordEvent(b, BookingStatus.ON_THE_WAY, "Worker is on the way");
-        notifications.send(b.getCustomer(), NotificationType.BOOKING, "Worker is on the way",
-                "Your worker is travelling to your service location.");
+        notifications.sendBooking(b.getCustomer(), NotificationType.BOOKING, "Worker is on the way",
+                "Your worker is travelling to your service location.", b.getId());
         return view(b);
     }
 
@@ -313,8 +313,8 @@ public class BookingController {
         b.arrive();
         b = repo.save(b);
         recordEvent(b, BookingStatus.ARRIVED, "Worker arrived at the location");
-        notifications.send(b.getCustomer(), NotificationType.BOOKING, "Worker arrived",
-                "Your worker " + u.getName() + " has arrived at the service location.");
+        notifications.sendBooking(b.getCustomer(), NotificationType.BOOKING, "Worker arrived",
+                "Your worker " + u.getName() + " has arrived at the service location.", b.getId());
         return view(b);
     }
 
@@ -330,8 +330,8 @@ public class BookingController {
         String code = String.format("%06d", random.nextInt(1_000_000));
         b.setStartOtpHash(encoder.encode(code));
         repo.save(b);
-        notifications.send(b.getCustomer(), NotificationType.BOOKING, "Start-service OTP",
-                "Share this OTP with your worker only after they arrive: " + code);
+        notifications.sendBooking(b.getCustomer(), NotificationType.BOOKING, "Start-service OTP",
+                "Share this OTP with your worker only after they arrive: " + code, b.getId());
         return Map.of("message", "A start OTP was sent to the customer.");
     }
 
@@ -363,8 +363,8 @@ public class BookingController {
         String code = String.format("%06d", random.nextInt(1_000_000));
         b.setEndOtpHash(encoder.encode(code));
         repo.save(b);
-        notifications.send(b.getCustomer(), NotificationType.BOOKING, "Complete-service OTP",
-                "Share this OTP with your worker only after the service is complete: " + code);
+        notifications.sendBooking(b.getCustomer(), NotificationType.BOOKING, "Complete-service OTP",
+                "Share this OTP with your worker only after the service is complete: " + code, b.getId());
         return Map.of("message", "A completion OTP was sent to the customer.");
     }
 

@@ -5,6 +5,8 @@ import java.util.*; import org.springframework.data.domain.Page; import org.spri
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 public interface BookingRepository extends JpaRepository<Booking,Long>, JpaSpecificationExecutor<Booking>{
  List<Booking> findByCustomerIdOrderByIdDesc(Long id);
  List<Booking> findByWorkerIdOrderByIdDesc(Long id);
@@ -12,6 +14,10 @@ public interface BookingRepository extends JpaRepository<Booking,Long>, JpaSpeci
  List<Booking> findByStatusOrderByIdDesc(BookingStatus status);
  List<Booking> findByStatusIn(Collection<BookingStatus> statuses);
  boolean existsByCustomerIdAndStatusIn(Long customerId, java.util.Collection<BookingStatus> statuses);
+
+ @Lock(LockModeType.PESSIMISTIC_WRITE)
+ @Query("SELECT b FROM Booking b WHERE b.id = :id")
+ Optional<Booking> findByIdForUpdate(Long id);
 
  long countByStatus(BookingStatus status);
  long countByPaymentStatus(PaymentStatus paymentStatus);

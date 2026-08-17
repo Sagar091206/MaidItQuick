@@ -76,6 +76,12 @@ class PartnerRepository {
   }) =>
       _upload(token, '/workers/me/profile-photo', document);
 
+  Future<Map<String, dynamic>> submitBackgroundDocument({
+    required String token,
+    required KycDocument document,
+  }) =>
+      _upload(token, '/workers/me/police-verification', document);
+
   Future<Map<String, dynamic>> saveAddress({
     required String token,
     required String currentAddress,

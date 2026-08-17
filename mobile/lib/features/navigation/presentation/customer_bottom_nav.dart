@@ -7,7 +7,7 @@ import '../../booking/data/customer_addresses_repository.dart';
 import '../../booking/presentation/booking_wizard_screen.dart';
 import '../../home/presentation/mvp_home_screen.dart';
 import '../../instant/presentation/instant_maid_screen.dart';
-import '../../notifications/presentation/alerts_screen.dart';
+import '../../notifications/presentation/customer_alerts_screen.dart';
 import '../../profile/data/customer_profile_repository.dart';
 import '../../profile/presentation/customer_profile_screen.dart';
 import '../../profile/presentation/profile_tab.dart';
@@ -121,10 +121,7 @@ class _CustomerBottomNavState extends State<CustomerBottomNav> {
         api: api,
         session: session,
       ),
-      AlertsScreen(
-        api: api,
-        session: session,
-      ),
+      CustomerAlertsScreen(api: api, session: session),
       ProfileTab(
         api: api,
         session: session,

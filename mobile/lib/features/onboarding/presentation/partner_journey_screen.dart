@@ -48,6 +48,7 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
   KycDocument? _identityDocument;
   KycDocument? _panDocument;
   KycDocument? _profilePhoto;
+  KycDocument? _backgroundDocument;
   KycDocument? _addressDocument;
   String _payoutMethod = 'BANK';
   bool _loading = true;
@@ -209,6 +210,24 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
     );
   }
 
+  Future<void> _submitBackgroundDocument() async {
+    final document = _backgroundDocument;
+    if (document == null) {
+      _showMessage(
+          'Choose a PDF, JPG or PNG police verification document first.');
+      return;
+    }
+    await _uploadDocument(
+      action: 'background',
+      document: document,
+      upload: () => _partnerRepository.submitBackgroundDocument(
+        token: widget.session.token,
+        document: document,
+      ),
+      success: 'Background verification document submitted for review.',
+    );
+  }
+
   Future<void> _saveAddress() async {
     final document = _addressDocument;
     if (_currentAddress.text.trim().isEmpty ||
@@ -242,7 +261,10 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
         document: document,
       );
       if (mounted) {
-        setState(() => _profile = profile);
+        setState(() {
+          _profile = profile;
+          _applicationStatusData = profile;
+        });
         _showMessage('Address details and proof submitted for review.');
       }
     });
@@ -279,7 +301,10 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
         upiId: _upiId.text.trim(),
       );
       if (mounted) {
-        setState(() => _profile = profile);
+        setState(() {
+          _profile = profile;
+          _applicationStatusData = profile;
+        });
         _showMessage('Payout details saved for verification.');
       }
     });
@@ -309,7 +334,10 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
     await _run(action, () async {
       final profile = await upload();
       if (mounted) {
-        setState(() => _profile = profile);
+        setState(() {
+          _profile = profile;
+          _applicationStatusData = profile;
+        });
         _showMessage(success);
       }
     });
@@ -471,6 +499,13 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
               onPressed: _isBusy('photo') ? null : _submitProfilePhoto,
               child: Text(_buttonLabel('photo', 'Submit photo')),
             ),
+            const SizedBox(height: 8),
+            FilledButton(
+              onPressed:
+                  _isBusy('background') ? null : _submitBackgroundDocument,
+              child: Text(
+                  _buttonLabel('background', 'Submit background document')),
+            ),
           ],
         );
       case 2:
@@ -506,6 +541,7 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
       _status('panStatus'),
       _status('selfieStatus'),
       _status('addressStatus'),
+      _status('backgroundCheckStatus'),
     ];
     final approvedCount =
         statuses.where((status) => status == 'APPROVED').length;
@@ -592,6 +628,12 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
               status: _status('selfieStatus'),
               icon: Icons.account_circle_outlined,
             ),
+            const SizedBox(height: 10),
+            _PartnerStatusCard(
+              title: 'Background verification',
+              status: _status('backgroundCheckStatus'),
+              icon: Icons.policy_outlined,
+            ),
           ],
         ),
         OnboardingStepCard(
@@ -620,6 +662,25 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
         ),
         OnboardingStepCard(
           number: '4',
+          title: 'Background verification',
+          status: _status('backgroundCheckStatus'),
+          children: [
+            const Text(
+              'Upload the latest police verification document as PDF, JPG or PNG.',
+              style: TextStyle(color: BrandColors.muted),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () =>
+                  _pickDocument((document) => _backgroundDocument = document),
+              icon: const Icon(Icons.upload_file_outlined),
+              label: Text(_backgroundDocument?.name ??
+                  'Choose police verification document'),
+            ),
+          ],
+        ),
+        OnboardingStepCard(
+          number: '5',
           title: 'Start receiving jobs',
           status: readyForJobs ? 'READY' : 'LOCKED',
           children: [
@@ -991,7 +1052,7 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
             icon: Icons.cancel_outlined,
             title: 'Application rejected',
             message: correctionReason ??
-                'Your application could not be approved. Contact support for assistance.',
+                'Replace the rejected KYC details and submit them for another review.',
             accent: Colors.redAccent,
           )
         else
@@ -1003,11 +1064,11 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
             accent: Colors.amber,
           ),
         const SizedBox(height: 14),
-        if (outcome == 'CHANGES_REQUIRED')
+        if (outcome == 'CHANGES_REQUIRED' || outcome == 'REJECTED')
           FilledButton.icon(
             onPressed: _goToCorrectionSection,
-            icon: const Icon(Icons.build_outlined),
-            label: const Text('Fix details'),
+            icon: const Icon(Icons.upload_file_outlined),
+            label: Text(outcome == 'REJECTED' ? 'Resubmit KYC' : 'Fix details'),
           )
         else if (outcome == 'APPROVED')
           FilledButton.icon(
@@ -1015,7 +1076,7 @@ class _PartnerJourneyScreenState extends State<PartnerJourneyScreen> {
             icon: const Icon(Icons.dashboard_outlined),
             label: const Text('Continue to dashboard'),
           ),
-        if (outcome == 'CHANGES_REQUIRED' || outcome == 'REJECTED')
+        if (outcome == 'CHANGES_REQUIRED')
           Padding(
             padding: const EdgeInsets.only(top: 10),
             child: OutlinedButton.icon(

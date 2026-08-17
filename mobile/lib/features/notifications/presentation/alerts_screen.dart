@@ -63,7 +63,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
     setState(() => notification['read'] = true);
 
     try {
-      final updated = await _repository.markRead(widget.session.token, id);
+      final updated =
+          await _repository.markReadById(widget.session.token, id);
       if (!mounted) return;
       setState(() {
         for (final item in _notifications) {
