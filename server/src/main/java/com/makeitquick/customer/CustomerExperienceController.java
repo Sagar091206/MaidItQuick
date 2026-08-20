@@ -13,6 +13,7 @@ import com.makeitquick.booking.BookingRepository;
 import com.makeitquick.booking.BookingStatus;
 import com.makeitquick.catalog.ServiceItem;
 import com.makeitquick.catalog.ServiceItemRepository;
+import com.makeitquick.catalog.ServiceAreaOfferingRepository;
 import java.time.LocalDate;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -41,18 +42,21 @@ public class CustomerExperienceController {
     private final UserRepository users;
     private final BookingRepository bookings;
     private final ServiceItemRepository services;
+    private final ServiceAreaOfferingRepository offerings;
 
     CustomerExperienceController(
             SavedAddressRepository addresses,
             SessionResolver resolver,
             UserRepository users,
             BookingRepository bookings,
-            ServiceItemRepository services) {
+            ServiceItemRepository services,
+            ServiceAreaOfferingRepository offerings) {
         this.addresses = addresses;
         this.resolver = resolver;
         this.users = users;
         this.bookings = bookings;
         this.services = services;
+        this.offerings = offerings;
     }
 
     @GetMapping("/me")
@@ -113,9 +117,14 @@ public class CustomerExperienceController {
             @RequestHeader(value = "Authorization", required = false) String authorization) {
         UserAccount customer = requireCustomer(authorization);
         List<SavedAddress> savedAddresses = addresses.findByCustomerOrderByIdDesc(customer);
-        List<Map<String, Object>> serviceCategories = services.findByEnabledTrueOrderByNameAsc().stream()
-                .map(this::serviceView)
-                .toList();
+        Optional<SavedAddress> defaultAddress = savedAddresses.stream().filter(SavedAddress::isDefaultAddress).findFirst()
+                .or(() -> savedAddresses.stream().findFirst());
+        List<Map<String, Object>> serviceCategories = defaultAddress
+                .map(address -> offerings.findByServiceAreaPinCodeAndEnabledTrueOrderByServiceNameAsc(address.getPinCode()).stream()
+                        .filter(offering -> offering.getServiceArea().isEnabled() && offering.getService().isEnabled())
+                        .map(offering -> serviceView(offering.getService(), offering.getPricePaise()))
+                        .toList())
+                .orElseGet(List::of);
         List<Booking> customerBookings = bookings.findByCustomerIdOrderByIdDesc(customer.getId());
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("welcomeName", customer.getName());
@@ -347,10 +356,14 @@ public class CustomerExperienceController {
     }
 
     private Map<String, Object> serviceView(ServiceItem service) {
+        return serviceView(service, service.getPricePaise());
+    }
+
+    private Map<String, Object> serviceView(ServiceItem service, int pricePaise) {
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("id", service.getId());
         view.put("name", service.getName());
-        view.put("pricePaise", service.getPricePaise());
+        view.put("pricePaise", pricePaise);
         view.put("description", service.getDescription());
         view.put("emoji", service.getEmoji());
         view.put("defaultDurationMinutes", service.getDefaultDurationMinutes());

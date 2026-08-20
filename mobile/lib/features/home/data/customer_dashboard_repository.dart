@@ -11,10 +11,12 @@ class CustomerDashboardRepository {
     return CustomerDashboard.fromJson(payload);
   }
 
-  Future<List<ServiceCategory>> searchServices(String query) async {
-    final path = query.trim().isEmpty
-        ? '/services'
-        : '/services?q=${Uri.encodeQueryComponent(query.trim())}';
+  Future<List<ServiceCategory>> searchServices(String query, {String? pinCode}) async {
+    final parameters = <String, String>{
+      if (query.trim().isNotEmpty) 'q': query.trim(),
+      if (pinCode != null && pinCode.trim().isNotEmpty) 'pinCode': pinCode.trim(),
+    };
+    final path = Uri(path: '/services', queryParameters: parameters.isEmpty ? null : parameters).toString();
     final payload = await _api.get(path);
     return List<Map<String, dynamic>>.from(payload as List)
         .map(ServiceCategory.fromJson)

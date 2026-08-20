@@ -14,11 +14,13 @@ import '../../../shared/widgets/profile_avatar.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../profile/presentation/complete_profile_screen.dart';
 
-/// Renders the development OTP hint only in debug builds so a shipped app
-/// never reveals codes in the UI.
+const _showDevOtp = bool.fromEnvironment('SHOW_DEV_OTP');
+
+/// Renders the development OTP hint in debug builds or explicitly opted-in
+/// local test builds. Production builds keep the code hidden.
 String _otpHelperText(OtpChallenge challenge, String fallback) {
   if (challenge.devOtp == null) return fallback;
-  return kDebugMode ? 'Dev OTP: ${challenge.devOtp}' : fallback;
+  return kDebugMode || _showDevOtp ? 'Dev OTP: ${challenge.devOtp}' : fallback;
 }
 
 class WelcomeScreen extends StatelessWidget {

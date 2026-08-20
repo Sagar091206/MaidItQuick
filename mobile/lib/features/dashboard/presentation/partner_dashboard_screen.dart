@@ -6,6 +6,7 @@ import '../../../core/api_client.dart';
 import '../../../core/brand_theme.dart';
 import '../../auth/data/auth_repository.dart';
 import '../data/partner_repository.dart';
+import 'accepted_booking_details_screen.dart';
 import 'incoming_booking_request_screen.dart';
 import 'partner_alerts_tab.dart';
 import 'partner_bookings_tab.dart';
@@ -384,6 +385,34 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen>
       }
     }
     if (!mounted) return;
+
+    final status = (booking['status'] ?? booking['bookingStatus'] ?? '')
+        .toString()
+        .trim()
+        .toUpperCase()
+        .replaceAll(' ', '_');
+    final isWaitingForAcceptance =
+        status == 'SEARCHING' || status == 'ASSIGNED' || status == 'REQUESTED';
+
+    // A persisted booking must resume from its backend status after the
+    // partner signs in again. Only genuinely unaccepted requests belong on
+    // the request/countdown screen.
+    if (bookingId.isNotEmpty && !isWaitingForAcceptance) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => AcceptedBookingDetailsScreen(
+            api: widget.api,
+            session: widget.session,
+            bookingId: bookingId,
+            initialBooking: booking,
+          ),
+        ),
+      );
+      if (!mounted) return;
+      await _loadDashboard(showMessage: false);
+      return;
+    }
+
     await Navigator.of(context).push<String>(
       MaterialPageRoute(
         builder: (_) => IncomingBookingRequestScreen(

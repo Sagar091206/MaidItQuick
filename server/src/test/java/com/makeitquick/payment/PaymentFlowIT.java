@@ -134,6 +134,10 @@ class PaymentFlowIT {
         assertThat(detail.get("paidAt").asText()).isNotBlank();
         assertThat(detail.get("status").asText()).isEqualTo("ASSIGNED");
         assertThat(detail.get("worker").asText()).isEqualTo(worker.getName());
+        assertThat(detail.get("customerAmountPaise").asInt()).isEqualTo(188564);
+        assertThat(detail.get("commissionPct").decimalValue()).isEqualByComparingTo("20");
+        assertThat(detail.get("commissionPaise").asInt()).isEqualTo(37713);
+        assertThat(detail.get("estimatedEarningsPaise").asInt()).isEqualTo(150851);
     }
 
     @Test

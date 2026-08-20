@@ -4,6 +4,7 @@ import '../../../core/brand_theme.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../booking/presentation/payment_screen.dart';
 import '../../booking/data/customer_addresses_repository.dart';
+import '../../booking/data/service_catalog_repository.dart';
 import '../data/instant_booking_repository.dart';
 
 class InstantMaidScreen extends StatefulWidget {
@@ -22,18 +23,55 @@ class InstantMaidScreen extends StatefulWidget {
 class _InstantMaidScreenState extends State<InstantMaidScreen> {
   int _duration = 60;
   bool _submitting = false;
+  int? _hourlyPricePaise;
+  String? _priceError;
   final _notes = TextEditingController();
+  @override
+  void initState() {
+    super.initState();
+    _loadPrice();
+  }
+
   @override
   void dispose() {
     _notes.dispose();
     super.dispose();
   }
 
-  int get _amount => 29900 * _duration ~/ 60;
+  int get _amount => (_hourlyPricePaise ?? 0) * _duration ~/ 60;
+  Future<void> _loadPrice() async {
+    final pin = widget.address?.pinCode;
+    if (pin == null || pin.isEmpty) return;
+    try {
+      final services =
+          await ServiceCatalogRepository(widget.api).listServices(pinCode: pin);
+      CatalogService? basic;
+      for (final service in services) {
+        if (service.name.toLowerCase() == 'basic home cleaning') {
+          basic = service;
+          break;
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _hourlyPricePaise = basic?.pricePaise;
+        _priceError = basic == null
+            ? 'Instant Maid is not available in this PIN code.'
+            : null;
+      });
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _priceError = error.message);
+    }
+  }
+
   Future<void> _continue() async {
     final address = widget.address;
     if (address == null) {
       _message('Choose a service address before requesting an instant maid.');
+      return;
+    }
+    if (_hourlyPricePaise == null) {
+      _message(_priceError ?? 'Loading the price for this PIN code.');
       return;
     }
     setState(() => _submitting = true);
@@ -100,8 +138,12 @@ class _InstantMaidScreenState extends State<InstantMaidScreen> {
         Card(
             child: ListTile(
                 title: const Text('Estimated price'),
-                subtitle: const Text('\u20B9299 per hour'),
-                trailing: Text('\u20B9${_amount ~/ 100}',
+                subtitle: Text(_priceError ??
+                    (_hourlyPricePaise == null
+                        ? 'Loading PIN-specific price…'
+                        : '\u20B9${_hourlyPricePaise! ~/ 100} per hour')),
+                trailing: Text(
+                    _hourlyPricePaise == null ? '—' : '\u20B9${_amount ~/ 100}',
                     style: const TextStyle(
                         fontSize: 20, fontWeight: FontWeight.w800)))),
         const SizedBox(height: 8),
@@ -110,7 +152,8 @@ class _InstantMaidScreenState extends State<InstantMaidScreen> {
             style: TextStyle(color: BrandColors.muted)),
         const SizedBox(height: 24),
         FilledButton.icon(
-            onPressed: _submitting ? null : _continue,
+            onPressed:
+                _submitting || _hourlyPricePaise == null ? null : _continue,
             icon: const Icon(Icons.lock_outline),
             label: Text(
                 _submitting ? 'Creating request...' : 'Continue to payment')),
