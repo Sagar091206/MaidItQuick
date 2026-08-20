@@ -16,6 +16,7 @@ class ServiceDetailsScreen extends StatefulWidget {
     required this.serviceId,
     required this.initialService,
     required this.onLogout,
+    this.pinCode,
   });
 
   final ApiClient api;
@@ -23,6 +24,7 @@ class ServiceDetailsScreen extends StatefulWidget {
   final int serviceId;
   final CatalogService initialService;
   final VoidCallback onLogout;
+  final String? pinCode;
 
   @override
   State<ServiceDetailsScreen> createState() => _ServiceDetailsScreenState();
@@ -46,7 +48,7 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
     });
     try {
       final detail = await ServiceCatalogRepository(widget.api)
-          .fetchDetail(widget.serviceId);
+          .fetchDetail(widget.serviceId, pinCode: widget.pinCode);
       if (mounted) setState(() => _service = detail);
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = error.message);

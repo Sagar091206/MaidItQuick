@@ -125,7 +125,8 @@ class _IncomingBookingRequestScreenState
   }
 
   String get _earnings {
-    final paise = widget.booking['paymentAmountPaise'];
+    final paise = widget.booking['estimatedEarningsPaise'] ??
+        widget.booking['workerPayoutPaise'];
     if (paise is num) return '₹${(paise / 100).toStringAsFixed(0)}';
     final value = widget.booking['estimatedEarnings'] ??
         widget.booking['estimatedPayout'] ??

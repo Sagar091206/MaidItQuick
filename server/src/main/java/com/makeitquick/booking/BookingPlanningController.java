@@ -102,6 +102,7 @@ public class BookingPlanningController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam("services") List<String> servicesParam,
             @RequestParam @Min(30) @Max(480) int durationMinutes,
+            @RequestParam(required = false) @Pattern(regexp = "\\d{6}") String pinCode,
             @RequestParam(required = false) String promoCode) {
         requireCustomer(authorization);
         List<String> names = servicesParam.stream()
@@ -109,7 +110,7 @@ public class BookingPlanningController {
         if (names.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose at least one service");
         }
-        return pricing.quote(names, durationMinutes, promoCode);
+        return pricing.quote(names, durationMinutes, promoCode, pinCode);
     }
 
     private void requireCustomer(String authorization) {

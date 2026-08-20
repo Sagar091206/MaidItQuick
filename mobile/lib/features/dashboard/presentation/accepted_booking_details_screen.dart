@@ -124,7 +124,7 @@ class _AcceptedBookingDetailsScreenState
 
   String get _earnings {
     final data = _booking ?? const <String, dynamic>{};
-    final paise = data['paymentAmountPaise'];
+    final paise = data['estimatedEarningsPaise'] ?? data['workerPayoutPaise'];
     if (paise is num) return '₹${(paise / 100).toStringAsFixed(0)}';
     final value = data['estimatedEarnings'] ??
         data['estimatedPayout'] ??
@@ -210,14 +210,16 @@ class _AcceptedBookingDetailsScreenState
     if (_stageUpdating) return;
     setState(() => _stageUpdating = true);
     try {
+      late final Map<String, dynamic> codeResponse;
       if (completing) {
-        await _partnerRepository.requestCompletionCode(
+        codeResponse = await _partnerRepository.requestCompletionCode(
             widget.session.token, widget.bookingId);
       } else {
-        await _partnerRepository.requestStartCode(
+        codeResponse = await _partnerRepository.requestStartCode(
             widget.session.token, widget.bookingId);
       }
       if (!mounted) return;
+      final devOtp = codeResponse['devOtp']?.toString();
       final controller = TextEditingController();
       final code = await showDialog<String>(
         context: context,
@@ -230,6 +232,16 @@ class _AcceptedBookingDetailsScreenState
               Text(completing
                   ? 'A completion OTP was sent to the customer. Enter the six-digit code they share with you.'
                   : 'A start OTP was sent to the customer. Enter the six-digit code they share with you.'),
+              if (devOtp != null && devOtp.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                SelectableText(
+                  'Dev OTP: $devOtp',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
               const SizedBox(height: 14),
               TextField(
                   controller: controller,

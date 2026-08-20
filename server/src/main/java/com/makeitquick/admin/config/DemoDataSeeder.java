@@ -133,7 +133,7 @@ public class DemoDataSeeder implements CommandLineRunner {
     if (settings.existsBySettingKey("platform_commission_pct")) return;
     Setting s = new Setting();
     s.setSettingKey("platform_commission_pct");
-    s.setSettingValue("18");
+    s.setSettingValue("20");
     s.setDescription("Platform commission percentage applied to every booking payout");
     settings.save(s);
   }

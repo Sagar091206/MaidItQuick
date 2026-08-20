@@ -34,7 +34,7 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
   final _city = TextEditingController();
   final _state = TextEditingController(text: 'Maharashtra');
   final _pin = TextEditingController();
-  List<Map<String, dynamic>> _services = [];
+  List<CatalogService> _services = [];
   List<Map<String, dynamic>> _addresses = [];
   final Set<String> _selectedServices = {};
   Map<String, dynamic>? _selectedAddress;
@@ -82,22 +82,19 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
     try {
       final catalog = ServiceCatalogRepository(widget.api);
       final addresses = CustomerAddressesRepository(widget.api);
-      final data = await Future.wait<dynamic>([
-        catalog.listServices(),
-        addresses.list(widget.session.token),
-      ]);
+      final saved = await addresses.list(widget.session.token);
+      final savedMaps = saved.map((entry) => entry.toMap()).toList();
+      final initialAddress = _defaultAddress(savedMaps);
+      final services = initialAddress == null
+          ? <CatalogService>[]
+          : await catalog.listServices(pinCode: initialAddress['pinCode']?.toString());
       if (!mounted) return;
-      final services = List<Map<String, dynamic>>.from(data[0] as List);
-      final savedAddresses = List<CustomerAddress>.from(data[1] as List)
-          .map((entry) => entry.toMap())
-          .toList();
       setState(() {
         _services = services;
-        _addresses = savedAddresses;
-        _selectedAddress = _defaultAddress(savedAddresses);
+        _addresses = savedMaps;
+        _selectedAddress = initialAddress;
         if (services.isNotEmpty) {
-          _selectedServices.add(services.first['name']?.toString() ?? '');
-          _selectedServices.remove('');
+          _selectedServices.add(services.first.name);
         }
         if (_selectedAddress != null) {
           _pin.text = _selectedAddress!['pinCode']?.toString() ?? '';
@@ -125,6 +122,27 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
   }
 
   List<String> get _selectedServiceNames => _selectedServices.toList()..sort();
+
+  Future<void> _reloadPinServices() async {
+    final pin = _selectedAddress?['pinCode']?.toString() ?? _pin.text.trim();
+    if (!RegExp(r'^\d{6}$').hasMatch(pin)) return;
+    try {
+      final services = await ServiceCatalogRepository(widget.api)
+          .listServices(pinCode: pin);
+      if (!mounted) return;
+      setState(() {
+        _services = services;
+        final available = services.map((service) => service.name).toSet();
+        _selectedServices.removeWhere((name) => !available.contains(name));
+        if (_selectedServices.isEmpty && services.isNotEmpty) {
+          _selectedServices.add(services.first.name);
+        }
+      });
+      await _recomputeDuration();
+    } on ApiException catch (error) {
+      if (mounted) _showMessage(error.message);
+    }
+  }
 
   int _duration = 0;
 
@@ -235,6 +253,7 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
         _availability = null;
       });
       await _checkAvailability();
+      await _reloadPinServices();
       _showMessage('Address saved.');
     } on ApiException catch (error) {
       _showMessage(error.message);
@@ -259,6 +278,7 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
         _pin.text = saved.pinCode;
       });
       await _checkAvailability();
+      await _reloadPinServices();
     } on ApiException catch (error) {
       _showMessage(error.message);
     }
@@ -633,6 +653,7 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
                                     _availability = null;
                                   });
                                   await _checkAvailability();
+                                  await _reloadPinServices();
                                 },
                                 child: Column(
                                   children: _addresses
@@ -797,13 +818,10 @@ class _CustomerJourneyScreenState extends State<CustomerJourneyScreen> {
                                 spacing: 10,
                                 runSpacing: 10,
                                 children: _services.map((service) {
-                                  final name =
-                                      service['name']?.toString() ?? '';
+                                  final name = service.name;
                                   final selected =
                                       _selectedServices.contains(name);
-                                  final price =
-                                      ((service['pricePaise'] ?? 0) as num) ~/
-                                          100;
+                                  final price = service.pricePaise ~/ 100;
                                   return FilterChip(
                                     selected: selected,
                                     showCheckmark: true,

@@ -182,9 +182,10 @@ public class SettlementController {
         if (b.getStatus() != BookingStatus.COMPLETED) continue;
         if (b.getCreatedAt() == null || b.getCreatedAt().isBefore(weekStart)) continue;
         BigDecimal amount = BigDecimal.valueOf(b.getPaymentAmountPaise(), 2);
-        BigDecimal commission = amount.multiply(pct)
-            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-        net = net.add(amount.subtract(commission));
+        BigDecimal payout = b.getCommissionPct() == null
+            ? amount.subtract(amount.multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP))
+            : BigDecimal.valueOf(b.getWorkerPayoutPaise(), 2);
+        net = net.add(payout);
       }
       if (net.compareTo(BigDecimal.ZERO) <= 0) continue;
       PayoutRecord rec = new PayoutRecord();
@@ -209,10 +210,10 @@ public class SettlementController {
           try {
             return new BigDecimal(s.getSettingValue());
           } catch (NumberFormatException e) {
-            return BigDecimal.valueOf(18);
+            return BigDecimal.valueOf(20);
           }
         })
-        .orElse(BigDecimal.valueOf(18));
+        .orElse(BigDecimal.valueOf(20));
   }
 
   private PayoutRecord find(long id) {
