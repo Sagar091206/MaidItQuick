@@ -7,10 +7,12 @@ class ServiceCatalogRepository {
 
   final ApiClient _api;
 
-  Future<List<CatalogService>> listServices({String query = ''}) async {
-    final path = query.trim().isEmpty
-        ? '/services'
-        : '/services?q=${Uri.encodeQueryComponent(query.trim())}';
+  Future<List<CatalogService>> listServices({String query = '', String? pinCode}) async {
+    final parameters = <String, String>{
+      if (query.trim().isNotEmpty) 'q': query.trim(),
+      if (pinCode != null && pinCode.trim().isNotEmpty) 'pinCode': pinCode.trim(),
+    };
+    final path = Uri(path: '/services', queryParameters: parameters.isEmpty ? null : parameters).toString();
     final payload = await _api.get(path) as List;
     return payload
         .map((item) =>
@@ -19,9 +21,12 @@ class ServiceCatalogRepository {
   }
 
   /// Fetches a single enabled service with its full details.
-  Future<CatalogService> fetchDetail(int id) async {
+  Future<CatalogService> fetchDetail(int id, {String? pinCode}) async {
+    final suffix = pinCode == null || pinCode.trim().isEmpty
+        ? ''
+        : '?pinCode=${Uri.encodeQueryComponent(pinCode.trim())}';
     final payload = Map<String, dynamic>.from(
-        await _api.get('/services/$id') as Map);
+        await _api.get('/services/$id$suffix') as Map);
     return CatalogService.fromJson(payload);
   }
 
@@ -56,9 +61,11 @@ class ServiceCatalogRepository {
     String token, {
     required List<String> services,
     required int durationMinutes,
+    required String pinCode,
     String promoCode = '',
   }) async {
     final query = StringBuffer('/booking/quote?durationMinutes=$durationMinutes');
+    query.write('&pinCode=${Uri.encodeQueryComponent(pinCode.trim())}');
     for (final service in services) {
       query.write('&services=${Uri.encodeQueryComponent(service)}');
     }

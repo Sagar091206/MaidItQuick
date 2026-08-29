@@ -12,6 +12,7 @@ import jakarta.validation.constraints.*;
 import java.security.SecureRandom;
 import java.util.*;
 import org.springframework.http.*;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -32,14 +33,17 @@ public class BookingController {
     private final ServiceCatalogService catalog;
     private final BookingAssignmentService assigner;
     private final BookingPricingService pricing;
+    private final CommissionService commissions;
     private final PasswordEncoder encoder;
+    private final boolean smsEnabled;
     private final SecureRandom random = new SecureRandom();
 
     BookingController(BookingRepository r, BookingServiceRepository bs, BookingEventRepository events,
                       SessionResolver resolver, UserRepository users, NotificationService n, WorkerSafetyService w,
                       ReturnRepository returns, ServiceAreaService areas, ServiceCatalogService catalog,
-                      BookingAssignmentService assigner, BookingPricingService pricing,
-                      PasswordEncoder encoder) {
+                      BookingAssignmentService assigner, BookingPricingService pricing, CommissionService commissions,
+                      PasswordEncoder encoder,
+                      @Value("${app.sms.enabled:false}") boolean smsEnabled) {
         repo = r;
         bookingServices = bs;
         bookingEvents = events;
@@ -52,7 +56,9 @@ public class BookingController {
         this.catalog = catalog;
         this.assigner = assigner;
         this.pricing = pricing;
+        this.commissions = commissions;
         this.encoder = encoder;
+        this.smsEnabled = smsEnabled;
     }
 
     private UserAccount me(String h) {
@@ -95,7 +101,7 @@ public class BookingController {
                     "You already have an active booking. Complete or cancel it before booking again.");
         }
         int effectiveDuration = x.durationMinutes() == null ? 60 : x.durationMinutes();
-        int amountPaise = pricing.totalPaise(requested, effectiveDuration, x.promoCode());
+        int amountPaise = pricing.totalPaise(requested, effectiveDuration, x.promoCode(), x.pinCode());
         String serviceLabel = String.join(", ", requested);
         Booking b = repo.save(new Booking(u, serviceLabel, x.address(), x.scheduledFor(), x.pinCode(),
                 x.durationMinutes(), x.optionLabel(), x.promoCode(), pricing.discountPaise(x.promoCode()),
@@ -332,7 +338,10 @@ public class BookingController {
         repo.save(b);
         notifications.sendBooking(b.getCustomer(), NotificationType.BOOKING, "Start-service OTP",
                 "Share this OTP with your worker only after they arrive: " + code, b.getId());
-        return Map.of("message", "A start OTP was sent to the customer.");
+        Map<String, String> response = new LinkedHashMap<>();
+        response.put("message", "A start OTP was sent to the customer.");
+        if (!smsEnabled) response.put("devOtp", code);
+        return response;
     }
 
     @PostMapping("/{id}/start")
@@ -365,7 +374,10 @@ public class BookingController {
         repo.save(b);
         notifications.sendBooking(b.getCustomer(), NotificationType.BOOKING, "Complete-service OTP",
                 "Share this OTP with your worker only after the service is complete: " + code, b.getId());
-        return Map.of("message", "A completion OTP was sent to the customer.");
+        Map<String, String> response = new LinkedHashMap<>();
+        response.put("message", "A completion OTP was sent to the customer.");
+        if (!smsEnabled) response.put("devOtp", code);
+        return response;
     }
 
     @PostMapping("/{id}/complete")
@@ -462,6 +474,13 @@ public class BookingController {
         result.put("status", b.getStatus());
         result.put("paymentStatus", b.getPaymentStatus().name());
         result.put("paymentAmountPaise", b.getPaymentAmountPaise());
+        result.put("customerAmountPaise", b.getPaymentAmountPaise());
+        CommissionService.Split split = b.getCommissionPct() == null
+                ? commissions.split(b.getPaymentAmountPaise())
+                : new CommissionService.Split(b.getCommissionPct(), b.getCommissionAmountPaise(), b.getWorkerPayoutPaise());
+        result.put("commissionPct", split.percentage());
+        result.put("commissionPaise", split.commissionPaise());
+        result.put("estimatedEarningsPaise", split.workerPayoutPaise());
         result.put("paymentMethod", b.getPaymentMethod());
         result.put("paidAt", b.getPaidAt() == null ? null : b.getPaidAt().toString());
         result.put("startOtpIssued", b.getStartOtpHash() != null);

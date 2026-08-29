@@ -115,6 +115,7 @@ class _MvpHomeScreenState extends State<MvpHomeScreen> {
           api: widget.api,
           session: widget.session,
           serviceId: service.id,
+          pinCode: _dashboard?.defaultAddress?.pinCode,
           initialService: CatalogService(
             id: service.id,
             name: service.name,

@@ -41,7 +41,7 @@ export class ApiError extends Error {
 /* ---- low level request ---- */
 const REQUEST_TIMEOUT_MS = 15000;
 
-async function rawRequest(method, path, body, token) {
+async function rawRequest(method, path, body, token, base = API_BASE) {
   const headers = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -50,7 +50,7 @@ async function rawRequest(method, path, body, token) {
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let response;
   try {
-    response = await fetch(`${API_BASE}${path}`, {
+    response = await fetch(`${base}${path}`, {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -106,9 +106,9 @@ async function refreshToken() {
   return response.json();
 }
 
-async function request(method, path, body) {
+async function request(method, path, body, base = API_BASE) {
   try {
-    const payload = await rawRequest(method, path, body, accessToken);
+    const payload = await rawRequest(method, path, body, accessToken, base);
     // Login/refresh endpoints are not envelope-wrapped; modules unwrap explicitly.
     return payload;
   } catch (err) {
@@ -126,7 +126,7 @@ async function request(method, path, body) {
       }
       try {
         await refreshing;
-        return await rawRequest(method, path, body, accessToken);
+        return await rawRequest(method, path, body, accessToken, base);
       } catch (refreshErr) {
         setAccessToken(null);
         window.dispatchEvent(new CustomEvent("app:session-expired"));
@@ -146,6 +146,16 @@ export const api = {
   delete: (path) => request("DELETE", path),
   // Multipart upload: { identity, address, identityDocType } — FormData from caller.
   upload: (path, formData) => uploadRequest(path, formData),
+};
+
+// Authenticated endpoints shared with the mobile API live below /api rather
+// than /api/v1/admin. Keep the same token-refresh behaviour for those calls.
+export const rootApi = {
+  get: (path) => request("GET", path, undefined, API_ORIGIN),
+  post: (path, body) => request("POST", path, body, API_ORIGIN),
+  put: (path, body) => request("PUT", path, body, API_ORIGIN),
+  patch: (path, body) => request("PATCH", path, body, API_ORIGIN),
+  delete: (path) => request("DELETE", path, undefined, API_ORIGIN),
 };
 
 /* ---- multipart request with token + one silent refresh ---- */

@@ -29,9 +29,11 @@ public class BookingPricingService {
     public static final int CONVENIENCE_FEE_PAISE = 0;
 
     private final ServiceItemRepository services;
+    private final com.makeitquick.catalog.ServiceAreaOfferingService areaOfferings;
 
-    BookingPricingService(ServiceItemRepository services) {
+    BookingPricingService(ServiceItemRepository services, com.makeitquick.catalog.ServiceAreaOfferingService areaOfferings) {
         this.services = services;
+        this.areaOfferings = areaOfferings;
     }
 
     /**
@@ -39,6 +41,10 @@ public class BookingPricingService {
      * GST, convenience fee and the total payable amount.
      */
     public Map<String, Object> quote(List<String> names, int durationMinutes, String promoCode) {
+        return quote(names, durationMinutes, promoCode, null);
+    }
+
+    public Map<String, Object> quote(List<String> names, int durationMinutes, String promoCode, String pinCode) {
         double hours = Math.max(1.0, durationMinutes / 60.0);
         List<Map<String, Object>> lines = new ArrayList<>();
         long subtotal = 0;
@@ -46,11 +52,13 @@ public class BookingPricingService {
             ServiceItem item = services.findByEnabledTrueAndNameIgnoreCase(name)
                     .orElseThrow(() -> new ResponseStatusException(
                             HttpStatus.BAD_REQUEST, name + " is not available"));
-            long amount = Math.round(item.getPricePaise() * hours);
+            int unitPrice = pinCode == null || pinCode.isBlank() ? item.getPricePaise()
+                    : areaOfferings.require(pinCode, item.getName()).getPricePaise();
+            long amount = Math.round(unitPrice * hours);
             subtotal += amount;
             Map<String, Object> line = new LinkedHashMap<>();
             line.put("name", item.getName());
-            line.put("pricePaise", item.getPricePaise());
+            line.put("pricePaise", unitPrice);
             line.put("amountPaise", amount);
             lines.add(line);
         }
@@ -62,6 +70,10 @@ public class BookingPricingService {
     public int totalPaise(List<String> names, int durationMinutes, String promoCode) {
         Map<String, Object> quote = quote(names, durationMinutes, promoCode);
         return Math.toIntExact((long) quote.get("totalPaise"));
+    }
+
+    public int totalPaise(List<String> names, int durationMinutes, String promoCode, String pinCode) {
+        return Math.toIntExact((long) quote(names, durationMinutes, promoCode, pinCode).get("totalPaise"));
     }
 
     /** Validated promo discount in paise (throws for unknown codes). */

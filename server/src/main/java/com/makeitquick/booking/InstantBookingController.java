@@ -26,7 +26,6 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/instant-bookings")
 @CrossOrigin(origins = "*")
 public class InstantBookingController {
-    private static final int HOURLY_RATE_PAISE = 29900;
     private static final int EXPIRY_MINUTES = 5;
     private final BookingRepository bookings;
     private final SavedAddressRepository addresses;
@@ -35,14 +34,16 @@ public class InstantBookingController {
     private final NotificationService notifications;
     private final BookingEventRepository bookingEvents;
     private final InstantRejectionRepository rejections;
+    private final BookingPricingService pricing;
 
     InstantBookingController(BookingRepository bookings, SavedAddressRepository addresses,
                              SessionResolver sessions, WorkerSafetyService workerSafety,
                              NotificationService notifications, BookingEventRepository bookingEvents,
-                             InstantRejectionRepository rejections) {
+                             InstantRejectionRepository rejections, BookingPricingService pricing) {
         this.bookings = bookings; this.addresses = addresses; this.sessions = sessions;
         this.workerSafety = workerSafety; this.notifications = notifications;
         this.bookingEvents = bookingEvents; this.rejections = rejections;
+        this.pricing = pricing;
     }
 
     @PostMapping
@@ -50,7 +51,7 @@ public class InstantBookingController {
         UserAccount customer = customer(header);
         SavedAddress address = addresses.findByIdAndCustomer(input.addressId(), customer)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Service address not found"));
-        int price = HOURLY_RATE_PAISE * input.durationMinutes() / 60;
+        int price = pricing.totalPaise(List.of("Basic Home Cleaning"), input.durationMinutes(), "", address.getPinCode());
         Booking booking = new Booking(customer, "Basic Home Cleaning", address.getAddress(),
                 Instant.now().toString(), address.getPinCode(), input.durationMinutes(), "Instant Maid", "", 0,
                 input.instructions() == null ? "" : input.instructions().trim());
@@ -136,6 +137,9 @@ public class InstantBookingController {
         result.put("durationMinutes", b.getDurationMinutes()); result.put("optionLabel", b.getOptionLabel()); result.put("promoCode", "");
         result.put("discountPaise", 0); result.put("specialInstructions", b.getSpecialInstructions()); result.put("status", b.getStatus().name());
         result.put("paymentStatus", b.getPaymentStatus().name()); result.put("paymentAmountPaise", b.getPaymentAmountPaise());
+        result.put("customerAmountPaise", b.getPaymentAmountPaise());
+        int payout = b.getCommissionPct()==null ? b.getPaymentAmountPaise()*80/100 : b.getWorkerPayoutPaise();
+        result.put("commissionPct", b.getCommissionPct()==null ? 20 : b.getCommissionPct()); result.put("estimatedEarningsPaise", payout);
         result.put("paymentMethod", b.getPaymentMethod()); result.put("customer", b.getCustomer().getName());
         result.put("worker", b.getWorker()==null ? "Unassigned" : b.getWorker().getName()); result.put("rating", 0);
         result.put("cancellationReason", ""); result.put("expiresAt", b.getExpiresAt()==null ? "" : b.getExpiresAt().toString());

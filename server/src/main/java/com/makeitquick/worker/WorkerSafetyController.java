@@ -1,6 +1,11 @@
 package com.makeitquick.worker;
 
+import com.makeitquick.admin.settings.SettingRepository;
+import com.makeitquick.booking.Booking;
+import com.makeitquick.booking.BookingRepository;
+import com.makeitquick.booking.BookingStatus;
 import com.makeitquick.operations.AvailabilityStatus;
+import com.makeitquick.payment.PaymentStatus;
 import com.makeitquick.security.Role;
 import com.makeitquick.security.SessionResolver;
 import com.makeitquick.security.UserAccount;
@@ -10,6 +15,8 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -18,6 +25,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.time.DayOfWeek;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -45,14 +56,20 @@ public class WorkerSafetyController {
 
     private final WorkerProfileRepository profiles;
     private final SessionResolver resolver;
+    private final BookingRepository bookings;
+    private final SettingRepository settings;
     private final Path uploadDirectory;
 
     WorkerSafetyController(
             WorkerProfileRepository profiles,
             SessionResolver resolver,
+            BookingRepository bookings,
+            SettingRepository settings,
             @Value("${app.uploads.directory:uploads/kyc}") String uploadDirectory) {
         this.profiles = profiles;
         this.resolver = resolver;
+        this.bookings = bookings;
+        this.settings = settings;
         this.uploadDirectory = Path.of(uploadDirectory).toAbsolutePath().normalize();
     }
 
@@ -346,7 +363,82 @@ public class WorkerSafetyController {
         view.put("latitude", profile.getLastLatitude());
         view.put("longitude", profile.getLastLongitude());
         view.put("locationUpdatedAt", profile.getLocationUpdatedAt());
+        addEarnings(view, profile.getUser());
         return view;
+    }
+
+    private void addEarnings(Map<String, Object> view, UserAccount worker) {
+        ZoneId zone = ZoneId.systemDefault();
+        LocalDate today = LocalDate.now(zone);
+        Instant todayStart = today.atStartOfDay(zone).toInstant();
+        Instant weekStart = today.with(DayOfWeek.MONDAY).atStartOfDay(zone).toInstant();
+        Instant monthStart = today.withDayOfMonth(1).atStartOfDay(zone).toInstant();
+        BigDecimal commissionPct = commissionPct();
+        BigDecimal todayEarnings = BigDecimal.ZERO;
+        BigDecimal weeklyEarnings = BigDecimal.ZERO;
+        BigDecimal monthlyEarnings = BigDecimal.ZERO;
+        BigDecimal totalEarnings = BigDecimal.ZERO;
+        int completedJobs = 0;
+        int ratedJobs = 0;
+        int ratingTotal = 0;
+        List<Map<String, Object>> transactions = new java.util.ArrayList<>();
+
+        for (Booking booking : bookings.findByWorkerIdOrderByIdDesc(worker.getId())) {
+            if (booking.getStatus() != BookingStatus.COMPLETED
+                    || booking.getPaymentStatus() != PaymentStatus.PAID) continue;
+            BigDecimal gross = BigDecimal.valueOf(booking.getPaymentAmountPaise(), 2);
+            BigDecimal commission = booking.getCommissionPct() == null
+                    ? gross.multiply(commissionPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP)
+                    : BigDecimal.valueOf(booking.getCommissionAmountPaise(), 2);
+            BigDecimal net = booking.getCommissionPct() == null
+                    ? gross.subtract(commission)
+                    : BigDecimal.valueOf(booking.getWorkerPayoutPaise(), 2);
+            Instant earnedAt = booking.getCreatedAt();
+            totalEarnings = totalEarnings.add(net);
+            completedJobs++;
+            if (earnedAt != null && !earnedAt.isBefore(monthStart)) monthlyEarnings = monthlyEarnings.add(net);
+            if (earnedAt != null && !earnedAt.isBefore(weekStart)) weeklyEarnings = weeklyEarnings.add(net);
+            if (earnedAt != null && !earnedAt.isBefore(todayStart)) todayEarnings = todayEarnings.add(net);
+            if (booking.getRating() != null && booking.getRating() > 0) {
+                ratingTotal += booking.getRating();
+                ratedJobs++;
+            }
+            Map<String, Object> transaction = new java.util.LinkedHashMap<>();
+            transaction.put("id", booking.getId());
+            transaction.put("bookingId", booking.getId());
+            transaction.put("title", booking.getService());
+            transaction.put("service", booking.getService());
+            transaction.put("amount", net);
+            transaction.put("grossAmount", gross);
+            transaction.put("commission", commission);
+            transaction.put("status", "EARNED");
+            transaction.put("createdAt", earnedAt == null ? "" : earnedAt.toString());
+            transactions.add(transaction);
+        }
+
+        view.put("todayEarnings", todayEarnings);
+        view.put("weeklyEarnings", weeklyEarnings);
+        view.put("monthlyEarnings", monthlyEarnings);
+        view.put("availableBalance", totalEarnings);
+        view.put("pendingSettlement", weeklyEarnings);
+        view.put("incentives", BigDecimal.ZERO);
+        view.put("deductions", BigDecimal.ZERO);
+        view.put("completedJobs", completedJobs);
+        view.put("rating", ratedJobs == 0 ? 0 : BigDecimal.valueOf(ratingTotal)
+                .divide(BigDecimal.valueOf(ratedJobs), 1, RoundingMode.HALF_UP));
+        view.put("transactions", transactions);
+    }
+
+    private BigDecimal commissionPct() {
+        return settings.findBySettingKey("platform_commission_pct")
+                .map(setting -> {
+                    try {
+                        return new BigDecimal(setting.getSettingValue());
+                    } catch (NumberFormatException ignored) {
+                        return BigDecimal.valueOf(18);
+                    }
+                })
+                .orElse(BigDecimal.valueOf(18));
     }
 
     private String firstRejectedSection(WorkerProfile profile) {

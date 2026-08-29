@@ -40,16 +40,19 @@ public class PaymentService {
     private final BookingServiceRepository bookingServices;
     private final BookingAssignmentService assigner;
     private final NotificationService notifications;
+    private final com.makeitquick.booking.CommissionService commissions;
     private final SecureRandom random = new SecureRandom();
 
     PaymentService(PaymentRepository payments, BookingRepository bookings,
                    BookingServiceRepository bookingServices,
-                   BookingAssignmentService assigner, NotificationService notifications) {
+                   BookingAssignmentService assigner, NotificationService notifications,
+                   com.makeitquick.booking.CommissionService commissions) {
         this.payments = payments;
         this.bookings = bookings;
         this.bookingServices = bookingServices;
         this.assigner = assigner;
         this.notifications = notifications;
+        this.commissions = commissions;
     }
 
     public Map<String, Object> createIntent(Booking booking, String method) {
@@ -105,6 +108,8 @@ public class PaymentService {
         payments.save(intent);
 
         booking.markPaid(method, intent.getAmountPaise());
+        var split = commissions.split(intent.getAmountPaise());
+        booking.snapshotCommission(split.percentage(), split.commissionPaise(), split.workerPayoutPaise());
         // Creation has a short checkout timeout, but workers need a separate
         // window after successful payment in which to discover and accept it.
         booking.extendInstantSearchUntil(Instant.now().plus(INSTANT_SEARCH_WINDOW));

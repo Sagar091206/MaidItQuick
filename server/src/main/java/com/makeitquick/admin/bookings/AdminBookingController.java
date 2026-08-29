@@ -268,15 +268,20 @@ public class AdminBookingController {
           try {
             return new BigDecimal(s.getSettingValue());
           } catch (NumberFormatException e) {
-            return BigDecimal.valueOf(18);
+            return BigDecimal.valueOf(20);
           }
         })
-        .orElse(BigDecimal.valueOf(18));
+        .orElse(BigDecimal.valueOf(20));
   }
 
   private BookingLedger toLedger(Booking b, BigDecimal pct) {
     BigDecimal amount = BigDecimal.valueOf(b.getPaymentAmountPaise(), 2);
-    BigDecimal commission = amount.multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+    BigDecimal appliedPct = b.getCommissionPct() == null ? pct : b.getCommissionPct();
+    BigDecimal commission = b.getCommissionPct() == null
+        ? amount.multiply(appliedPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP)
+        : BigDecimal.valueOf(b.getCommissionAmountPaise(), 2);
+    BigDecimal payout = b.getCommissionPct() == null ? amount.subtract(commission)
+        : BigDecimal.valueOf(b.getWorkerPayoutPaise(), 2);
     return new BookingLedger(
         b.getId(), b.getStatus().name(), b.getCreatedAt(), b.getScheduledFor(),
         b.getCustomer() != null ? b.getCustomer().getName() : null,
@@ -284,7 +289,7 @@ public class AdminBookingController {
         b.getWorker() != null ? b.getWorker().getName() : null,
         b.getWorker() != null ? b.getWorker().getPhone() : null,
         b.getService(),
-        amount, pct, commission, amount.subtract(commission));
+        amount, appliedPct, commission, payout);
   }
 
   private List<BookingStatus> toStatuses(String status) {

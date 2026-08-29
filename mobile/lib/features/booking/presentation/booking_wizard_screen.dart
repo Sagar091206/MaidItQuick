@@ -104,17 +104,17 @@ class _BookingWizardScreenState extends State<BookingWizardScreen> {
     try {
       final catalog = ServiceCatalogRepository(widget.api);
       final addresses = CustomerAddressesRepository(widget.api);
-      final data = await Future.wait<dynamic>([
-        catalog.listServices(),
-        addresses.list(widget.session.token),
-      ]);
-      final services = List<CatalogService>.from(data[0] as List);
-      final saved = List<CustomerAddress>.from(data[1] as List);
+      final saved = await addresses.list(widget.session.token);
+      final selectedAddress = _defaultAddress(saved);
+      final services = selectedAddress == null
+          ? <CatalogService>[]
+          : await catalog.listServices(pinCode: selectedAddress.pinCode);
       if (!mounted) return;
       setState(() {
         _services = services;
         _addresses = saved;
-        _selectedAddress = _defaultAddress(saved);
+        _selectedAddress = selectedAddress;
+        _pin.text = selectedAddress?.pinCode ?? '';
         for (final name in widget.initialServices) {
           if (services.any((s) => s.name == name)) _selected.add(name);
         }
@@ -147,6 +147,28 @@ class _BookingWizardScreenState extends State<BookingWizardScreen> {
   }
 
   List<String> get _selectedNames => _selected.toList()..sort();
+
+  Future<void> _reloadServicesForSelectedAddress() async {
+    final pinCode = _selectedAddress?.pinCode ?? _pin.text.trim();
+    if (!RegExp(r'^\d{6}$').hasMatch(pinCode)) return;
+    try {
+      final services = await ServiceCatalogRepository(widget.api)
+          .listServices(pinCode: pinCode);
+      if (!mounted) return;
+      setState(() {
+        _services = services;
+        final available = services.map((service) => service.name).toSet();
+        _selected.removeWhere((name) => !available.contains(name));
+        if (_selected.isEmpty && services.isNotEmpty) {
+          _selected.add(services.first.name);
+        }
+        _quote = null;
+      });
+      await _recomputeDuration();
+    } on ApiException catch (error) {
+      if (mounted) _showMessage(error.message);
+    }
+  }
 
   Future<void> _recomputeDuration() async {
     if (_selected.isEmpty) {
@@ -243,6 +265,7 @@ class _BookingWizardScreenState extends State<BookingWizardScreen> {
         _availability = null;
       });
       await _checkAvailability(showError: false);
+      await _reloadServicesForSelectedAddress();
       await _loadSlots();
       _showMessage('Address saved.');
     } on ApiException catch (error) {
@@ -298,6 +321,7 @@ class _BookingWizardScreenState extends State<BookingWizardScreen> {
         _pin.text = saved.pinCode;
       });
       await _checkAvailability(showError: false);
+      await _reloadServicesForSelectedAddress();
       await _loadSlots();
     } on ApiException catch (error) {
       _showMessage(error.message);
@@ -393,6 +417,7 @@ class _BookingWizardScreenState extends State<BookingWizardScreen> {
         widget.session.token,
         services: _selectedNames,
         durationMinutes: _durationMinutes,
+        pinCode: _selectedAddress?.pinCode ?? _pin.text.trim(),
         promoCode: _promo.text.trim(),
       );
       if (mounted) setState(() => _quote = quote);
@@ -598,14 +623,15 @@ class _BookingWizardScreenState extends State<BookingWizardScreen> {
         else
           RadioGroup<CustomerAddress>(
             groupValue: _selectedAddress,
-            onChanged: (value) {
+            onChanged: (value) async {
               setState(() {
                 _selectedAddress = value;
                 _pin.text = value?.pinCode ?? '';
                 _availability = null;
               });
-              _checkAvailability(showError: false);
-              _loadSlots();
+              await _checkAvailability(showError: false);
+              await _reloadServicesForSelectedAddress();
+              await _loadSlots();
             },
             child: Column(
               children: _addresses

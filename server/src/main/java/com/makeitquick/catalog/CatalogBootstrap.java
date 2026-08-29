@@ -3,12 +3,15 @@ package com.makeitquick.catalog;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 
 @Configuration
 class CatalogBootstrap {
     private record Seed(String name, String priceRupees, String emoji, String description, int defaultDurationMinutes) {}
 
     private static final Seed[] PRD_SERVICES = {
+            new Seed("Basic Home Cleaning", "299", "🧹",
+                    "Flexible hourly home cleaning for Instant Maid requests using the supplies you provide at home.", 60),
             new Seed("Bathroom Cleaning", "799", "🛁",
                     "Deep cleaning of sinks, taps, mirrors, tiles and WC using the supplies you provide at home.", 60),
             new Seed("Kitchen Cleaning", "899", "🍳",
@@ -22,6 +25,7 @@ class CatalogBootstrap {
     };
 
     @Bean
+    @Order(10)
     CommandLineRunner seedServices(ServiceItemRepository services) {
         return args -> {
             for (Seed entry : PRD_SERVICES) {

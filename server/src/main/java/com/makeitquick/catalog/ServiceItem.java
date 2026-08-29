@@ -22,6 +22,8 @@ public class ServiceItem {
     public Long getId() { return id; }
     public String getName() { return name; }
     public int getPricePaise() { return pricePaise; }
+    public void setPricePaise(int pricePaise) { this.pricePaise = pricePaise; }
+    public void setName(String name) { this.name = name; }
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
     public String getDescription() { return description == null ? "" : description; }

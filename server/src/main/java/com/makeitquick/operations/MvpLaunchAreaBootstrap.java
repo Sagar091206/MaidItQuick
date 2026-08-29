@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 
 /**
  * Sets up the first MaidItQuick launch locality for local MVP demonstrations.
@@ -12,6 +13,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class MvpLaunchAreaBootstrap {
     @Bean
+    @Order(20)
     CommandLineRunner seedLaunchArea(
             ServiceAreaRepository areas,
             @Value("${app.launch.seed-default-area:true}") boolean seedDefaultArea,
