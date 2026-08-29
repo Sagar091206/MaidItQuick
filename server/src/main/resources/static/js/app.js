@@ -971,8 +971,14 @@ function setActiveNav(path) {
   });
 }
 
+function closeDropdowns() {
+  document.querySelectorAll(".dropdown.open").forEach((d) => d.classList.remove("open"));
+  document.getElementById("nav-more-panel")?.classList.remove("open");
+}
+
 function renderTopnav() {
   const nav = document.getElementById("topnav");
+  document.getElementById("nav-more-panel")?.remove();
   const primary = MODULES.filter((m) => m.group === "Primary" && auth.hasPermission(m.permission));
   const more = MODULES.filter((m) => m.group === "More" && auth.hasPermission(m.permission));
   nav.innerHTML = `
@@ -997,7 +1003,7 @@ function renderTopnav() {
           More
           <svg width="13" height="13"><use href="#i-chev-d"/></svg>
         </button>
-        <div class="dropdown-panel" style="min-width:230px;right:8px;top:calc(100% + 6px)">
+        <div class="dropdown-panel nav-more-panel" id="nav-more-panel">
           ${more
             .map(
               (m) => `
@@ -1013,11 +1019,18 @@ function renderTopnav() {
   `;
   document.getElementById("nav-more-btn")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    const drop = document.getElementById("nav-more-drop");
-    const wasOpen = drop.classList.contains("open");
-    document.querySelectorAll(".dropdown.open").forEach((d) => d.classList.remove("open"));
-    if (!wasOpen) drop.classList.add("open");
+    const panel = document.getElementById("nav-more-panel");
+    const wasOpen = panel.classList.contains("open");
+    closeDropdowns();
+    if (!wasOpen) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      panel.style.top = `${rect.bottom + 6}px`;
+      panel.style.right = `${Math.max(8, window.innerWidth - rect.right)}px`;
+      panel.classList.add("open");
+    }
   });
+  const morePanel = document.getElementById("nav-more-panel");
+  if (morePanel) document.body.appendChild(morePanel);
   document.getElementById("nav-logout")?.addEventListener("click", async (e) => {
     e.preventDefault();
     const ok = await confirmDialog({
@@ -1103,14 +1116,14 @@ async function boot() {
   document.getElementById("profile-btn").addEventListener("click", (e) => {
     e.stopPropagation();
     const wasOpen = profileDrop.classList.contains("open");
-    document.querySelectorAll(".dropdown.open").forEach((d) => d.classList.remove("open"));
+    closeDropdowns();
     if (!wasOpen) profileDrop.classList.add("open");
   });
 
   document.querySelectorAll(".dropdown-item").forEach((btn) => {
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
-      profileDrop.classList.remove("open");
+      closeDropdowns();
       const action = btn.dataset.action;
       if (action === "logout") {
         const ok = await confirmDialog({
@@ -1130,8 +1143,8 @@ async function boot() {
   });
 
   document.addEventListener("click", (e) => {
-    if (!e.target.closest(".dropdown")) {
-      document.querySelectorAll(".dropdown.open").forEach((d) => d.classList.remove("open"));
+    if (!e.target.closest(".dropdown") && !e.target.closest(".nav-more-panel")) {
+      closeDropdowns();
     }
   });
 
