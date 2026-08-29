@@ -115,6 +115,8 @@ void main() {
     expect(find.text('UPI'), findsOneWidget);
     expect(find.text('Card'), findsOneWidget);
     expect(find.text('Net banking'), findsOneWidget);
+    await tester.drag(find.byType(ListView), const Offset(0, -400));
+    await tester.pumpAndSettle();
     expect(find.textContaining('simulated payment gateway'), findsOneWidget);
   });
 

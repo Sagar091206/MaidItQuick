@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.makeitquick.notification.NotificationService;
+import com.makeitquick.notification.NotificationType;
 import com.makeitquick.operations.AvailabilityStatus;
 import com.makeitquick.security.JwtService;
 import com.makeitquick.security.Role;
@@ -61,6 +63,15 @@ class BookingLifecycleIT {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private BookingEventRepository bookingEvents;
+
+    @Autowired
+    private NotificationService notificationService;
+
+    @Autowired
+    private ScheduledBookingDispatchService scheduledDispatch;
 
     @Autowired
     private UserRepository users;
@@ -122,6 +133,140 @@ class BookingLifecycleIT {
     }
 
     @Test
+    void scheduledBookingFallsBackToAvailableOffShiftWorker() throws Exception {
+        UserAccount customer = newCustomer("+919800000019", true);
+        UserAccount worker = newEligibleWorker("+919800000020");
+        LocalDateTime serviceTime = LocalDateTime.now().plusDays(2).withHour(10).withMinute(0).withSecond(0).withNano(0);
+        WorkerProfile profile = profiles.findByUser_Id(worker.getId()).orElseThrow();
+        profile.setWorkingHours(serviceTime.getDayOfWeek().plus(1).name().toLowerCase(), "09:00", "18:00");
+        profiles.save(profile);
+
+        JsonNode created = createBooking(customer, worker, serviceTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        payFor(customer, created.get("id").asLong(), "UPI");
+
+        JsonNode paid = expect(mockMvc.perform(get("/api/bookings/" + created.get("id").asLong())
+                .header("Authorization", "Bearer " + jwt.issue(customer))), 200);
+        assertThat(paid.get("status").asText()).isEqualTo("ASSIGNED");
+        assertThat(paid.get("worker").asText()).isEqualTo(worker.getName());
+    }
+
+    @Test
+    void paidScheduledBookingIsRetriedWhenPartnerBecomesAvailable() throws Exception {
+        UserAccount customer = newCustomer("+919800000022", true);
+        JsonNode created = createBooking(customer, null, futureTime());
+        long id = created.get("id").asLong();
+        payFor(customer, id, "UPI");
+        assertThat(expect(mockMvc.perform(get("/api/bookings/" + id)
+                .header("Authorization", "Bearer " + jwt.issue(customer))), 200)
+                .get("status").asText()).isEqualTo("REQUESTED");
+
+        UserAccount worker = newEligibleWorker("+919800000023");
+        scheduledDispatch.retryUnassignedPaidBookings();
+
+        JsonNode assigned = expect(mockMvc.perform(get("/api/bookings/" + id)
+                .header("Authorization", "Bearer " + jwt.issue(customer))), 200);
+        assertThat(assigned.get("status").asText()).isEqualTo("ASSIGNED");
+        assertThat(assigned.get("worker").asText()).isEqualTo(worker.getName());
+    }
+
+    @Test
+    void goingOfflineReleasesAndHidesPendingScheduledRequest() throws Exception {
+        UserAccount customer = newCustomer("+919800000024", true);
+        UserAccount worker = newEligibleWorker("+919800000025");
+        JsonNode created = createBooking(customer, worker, futureTime());
+        long id = created.get("id").asLong();
+        payFor(customer, id, "UPI");
+
+        JsonNode availability = postWith(
+                worker, "/api/workers/me/availability", Map.of("status", "OFFLINE"));
+        assertThat(availability.get("availability").asText()).isEqualTo("OFFLINE");
+
+        JsonNode customerView = expect(mockMvc.perform(get("/api/bookings/" + id)
+                .header("Authorization", "Bearer " + jwt.issue(customer))), 200);
+        assertThat(customerView.get("status").asText()).isEqualTo("REQUESTED");
+        assertThat(customerView.get("worker").asText()).isEqualTo("Unassigned");
+
+        JsonNode workerBookings = expect(mockMvc.perform(get("/api/bookings")
+                .header("Authorization", "Bearer " + jwt.issue(worker))), 200);
+        assertThat(workerBookings).noneSatisfy(item ->
+                assertThat(item.get("id").asLong()).isEqualTo(id));
+        expect(mockMvc.perform(get("/api/bookings/" + id)
+                .header("Authorization", "Bearer " + jwt.issue(worker))), 403);
+
+        JsonNode alerts = expect(mockMvc.perform(get("/api/notifications")
+                .header("Authorization", "Bearer " + jwt.issue(worker))), 200);
+        assertThat(alerts).noneSatisfy(alert ->
+                assertThat(alert.path("bookingId").asLong()).isEqualTo(id));
+    }
+
+    @Test
+    void goingOfflineReassignsRequestToAnotherAvailablePartner() throws Exception {
+        UserAccount customer = newCustomer("+919800000030", true);
+        UserAccount firstWorker = newEligibleWorker("+919800000031");
+        UserAccount secondWorker = newEligibleWorker("+919800000032");
+        secondWorker.setName("Second Test Worker");
+        users.save(secondWorker);
+        JsonNode created = createBooking(customer, firstWorker, futureTime());
+        long id = created.get("id").asLong();
+        payFor(customer, id, "UPI");
+
+        JsonNode initiallyAssigned = expect(mockMvc.perform(get("/api/bookings/" + id)
+                .header("Authorization", "Bearer " + jwt.issue(customer))), 200);
+        assertThat(initiallyAssigned.get("worker").asText()).isEqualTo(firstWorker.getName());
+
+        postWith(firstWorker, "/api/workers/me/availability", Map.of("status", "OFFLINE"));
+
+        JsonNode reassigned = expect(mockMvc.perform(get("/api/bookings/" + id)
+                .header("Authorization", "Bearer " + jwt.issue(customer))), 200);
+        assertThat(reassigned.get("status").asText()).isEqualTo("ASSIGNED");
+        assertThat(reassigned.get("worker").asText()).isEqualTo(secondWorker.getName());
+
+        JsonNode firstWorkerBookings = expect(mockMvc.perform(get("/api/bookings")
+                .header("Authorization", "Bearer " + jwt.issue(firstWorker))), 200);
+        assertThat(firstWorkerBookings).noneSatisfy(item ->
+                assertThat(item.get("id").asLong()).isEqualTo(id));
+
+        JsonNode secondWorkerBookings = expect(mockMvc.perform(get("/api/bookings")
+                .header("Authorization", "Bearer " + jwt.issue(secondWorker))), 200);
+        assertThat(secondWorkerBookings).anySatisfy(item -> {
+            assertThat(item.get("id").asLong()).isEqualTo(id);
+            assertThat(item.get("status").asText()).isEqualTo("ASSIGNED");
+        });
+    }
+
+    @Test
+    void offlinePartnerCannotAcceptStaleAssignedRequest() throws Exception {
+        UserAccount customer = newCustomer("+919800000026", true);
+        UserAccount worker = newEligibleWorker("+919800000027");
+        JsonNode created = createBooking(customer, worker, futureTime());
+        long id = created.get("id").asLong();
+        payFor(customer, id, "UPI");
+
+        WorkerProfile profile = profiles.findByUser_Id(worker.getId()).orElseThrow();
+        profile.setAvailability(AvailabilityStatus.OFFLINE);
+        profiles.save(profile);
+
+        JsonNode error = expect(post("/api/bookings/" + id + "/accept")
+                .header("Authorization", "Bearer " + jwt.issue(worker)), 409);
+        assertThat(error.get("message").asText()).contains("Go online");
+
+        JsonNode workerBookings = expect(mockMvc.perform(get("/api/bookings")
+                .header("Authorization", "Bearer " + jwt.issue(worker))), 200);
+        assertThat(workerBookings).noneSatisfy(item ->
+                assertThat(item.get("id").asLong()).isEqualTo(id));
+    }
+
+    @Test
+    void customerCannotReadAnotherCustomersUnassignedBooking() throws Exception {
+        UserAccount owner = newCustomer("+919800000028", true);
+        UserAccount other = newCustomer("+919800000029", true);
+        JsonNode created = createBooking(owner, null, futureTime());
+
+        expect(mockMvc.perform(get("/api/bookings/" + created.get("id").asLong())
+                .header("Authorization", "Bearer " + jwt.issue(other))), 403);
+    }
+
+    @Test
     void customerCanCancelBeforeWorkerTravelsIncludingAccepted() throws Exception {
         UserAccount customer = newCustomer("+919800000003", true);
         UserAccount worker = newEligibleWorker("+919800000004");
@@ -162,6 +307,63 @@ class BookingLifecycleIT {
         JsonNode rated = postWith(customer, "/api/bookings/" + id + "/rating",
                 Map.of("stars", 5, "comment", "Great service"));
         assertThat(rated.get("status").asText()).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void acceptedJobSurvivesFreshPartnerSessionAndRepeatedAccept() throws Exception {
+        UserAccount customer = newCustomer("+919800000017", true);
+        UserAccount worker = newEligibleWorker("+919800000018");
+        JsonNode created = createBooking(customer, worker, futureTime());
+        long id = created.get("id").asLong();
+        payFor(customer, id, "UPI");
+
+        String firstToken = jwt.issue(worker);
+        JsonNode accepted = expect(post("/api/bookings/" + id + "/accept")
+                .header("Authorization", "Bearer " + firstToken), 200);
+        assertThat(accepted.get("status").asText()).isEqualTo("ACCEPTED");
+
+        expect(post("/api/auth/logout")
+                .header("Authorization", "Bearer " + firstToken), 200);
+        String freshToken = jwt.issue(worker);
+        JsonNode restored = expect(get("/api/bookings")
+                .header("Authorization", "Bearer " + freshToken), 200);
+        assertThat(restored).anySatisfy(item -> {
+            assertThat(item.get("id").asLong()).isEqualTo(id);
+            assertThat(item.get("status").asText()).isEqualTo("ACCEPTED");
+        });
+
+        JsonNode repeated = expect(post("/api/bookings/" + id + "/accept")
+                .header("Authorization", "Bearer " + freshToken), 200);
+        assertThat(repeated.get("status").asText()).isEqualTo("ACCEPTED");
+        assertThat(bookingEvents.findByBookingIdOrderByCreatedAtAsc(id).stream()
+                .filter(event -> event.getStatus() == BookingStatus.ACCEPTED)).hasSize(1);
+
+        JsonNode alerts = expect(get("/api/notifications")
+                .header("Authorization", "Bearer " + freshToken), 200);
+        assertThat(alerts).anySatisfy(alert -> {
+            assertThat(alert.get("title").asText()).isEqualTo("New booking request");
+            assertThat(alert.get("bookingId").asLong()).isEqualTo(id);
+            assertThat(alert.get("read").asBoolean()).isTrue();
+        });
+        assertThat(alerts).anySatisfy(alert -> {
+            assertThat(alert.get("title").asText()).isEqualTo("Job accepted");
+            assertThat(alert.get("bookingId").asLong()).isEqualTo(id);
+            assertThat(alert.get("read").asBoolean()).isFalse();
+        });
+    }
+
+    @Test
+    void notificationInboxLoadsHistoricalPaymentAlerts() throws Exception {
+        UserAccount customer = newCustomer("+919800000021", true);
+        notificationService.send(customer, NotificationType.BOOKING,
+                "Booking update", "Your booking was updated.");
+        notificationService.send(customer, NotificationType.PAYMENT,
+                "Refund issued", "Your payment was refunded.");
+
+        JsonNode alerts = expect(get("/api/notifications")
+                .header("Authorization", "Bearer " + jwt.issue(customer)), 200);
+        assertThat(alerts).extracting(item -> item.get("type").asText())
+                .contains("BOOKING", "PAYMENT");
     }
 
     @Test

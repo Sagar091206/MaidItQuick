@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "powershell": "^2.3.3"
+  }
+}

@@ -4,6 +4,7 @@ import com.makeitquick.admin.settings.SettingRepository;
 import com.makeitquick.booking.Booking;
 import com.makeitquick.booking.BookingRepository;
 import com.makeitquick.booking.BookingStatus;
+import com.makeitquick.booking.PartnerAvailabilityBookingService;
 import com.makeitquick.operations.AvailabilityStatus;
 import com.makeitquick.payment.PaymentStatus;
 import com.makeitquick.security.Role;
@@ -31,6 +32,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -57,6 +59,7 @@ public class WorkerSafetyController {
     private final WorkerProfileRepository profiles;
     private final SessionResolver resolver;
     private final BookingRepository bookings;
+    private final PartnerAvailabilityBookingService availabilityBookings;
     private final SettingRepository settings;
     private final Path uploadDirectory;
 
@@ -64,11 +67,13 @@ public class WorkerSafetyController {
             WorkerProfileRepository profiles,
             SessionResolver resolver,
             BookingRepository bookings,
+            PartnerAvailabilityBookingService availabilityBookings,
             SettingRepository settings,
             @Value("${app.uploads.directory:uploads/kyc}") String uploadDirectory) {
         this.profiles = profiles;
         this.resolver = resolver;
         this.bookings = bookings;
+        this.availabilityBookings = availabilityBookings;
         this.settings = settings;
         this.uploadDirectory = Path.of(uploadDirectory).toAbsolutePath().normalize();
     }
@@ -191,6 +196,7 @@ public class WorkerSafetyController {
     }
 
     @PostMapping("/me/availability")
+    @Transactional
     public Map<String, Object> setAvailability(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @Valid @RequestBody AvailabilityInput input) {
@@ -199,7 +205,11 @@ public class WorkerSafetyController {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "All compliance and payout checks must be approved before going available");
         }
         profile.setAvailability(input.status());
-        return view(profiles.save(profile));
+        WorkerProfile saved = profiles.save(profile);
+        if (input.status() != AvailabilityStatus.AVAILABLE) {
+            availabilityBookings.releasePendingScheduledRequests(profile.getUser());
+        }
+        return view(saved);
     }
 
     @PostMapping("/me/service-areas")

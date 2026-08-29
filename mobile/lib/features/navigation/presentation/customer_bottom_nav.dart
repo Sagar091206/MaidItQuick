@@ -112,7 +112,6 @@ class _CustomerBottomNavState extends State<CustomerBottomNav> {
         api: api,
         session: session,
         onLogout: widget.onLogout,
-        onOpenSettings: _openSettings,
         onBookService: _openBookingFlow,
         onOpenBookings: () => _switchTab(1),
         onInstantMaid: _openInstantMaid,

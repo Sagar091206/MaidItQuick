@@ -76,6 +76,7 @@ void main() {
       'token',
       services: const ['Bathroom Cleaning'],
       durationMinutes: 120,
+      pinCode: '712235',
       promoCode: 'WELCOME50',
     );
     expect(quote.lines, hasLength(1));

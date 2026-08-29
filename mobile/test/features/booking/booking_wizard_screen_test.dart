@@ -9,7 +9,7 @@ import 'package:maiditquick_mobile/shared/widgets/app_states.dart';
 class _FakeApi extends ApiClient {
   @override
   Future<dynamic> get(String path, {String? token}) async {
-    if (path == '/services') {
+    if (path.startsWith('/services?')) {
       return [
         {'id': 1, 'name': 'Bathroom Cleaning', 'pricePaise': 79900, 'emoji': '🛁'},
         {'id': 2, 'name': 'Kitchen Cleaning', 'pricePaise': 89900, 'emoji': '🍳'},
