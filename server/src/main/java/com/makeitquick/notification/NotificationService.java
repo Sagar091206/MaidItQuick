@@ -46,6 +46,16 @@ public class NotificationService {
         notifications.save(new AppNotification(recipient, type, title, message, bookingId));
     }
 
+    public void markBookingNotificationsRead(UserAccount recipient, Long bookingId) {
+        var unread = notifications.findByRecipientAndBookingIdAndReadFalse(recipient, bookingId);
+        unread.forEach(AppNotification::markRead);
+        notifications.saveAll(unread);
+    }
+
+    public void removeBookingNotifications(UserAccount recipient, Long bookingId) {
+        notifications.deleteAll(notifications.findByRecipientAndBookingId(recipient, bookingId));
+    }
+
     private boolean hasDeliverableEmail(UserAccount recipient) {
         return recipient.getEmail() != null && !recipient.getEmail().isBlank();
     }

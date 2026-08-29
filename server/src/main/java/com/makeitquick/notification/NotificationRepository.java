@@ -9,4 +9,6 @@ interface NotificationRepository extends JpaRepository<AppNotification, Long> {
     List<AppNotification> findByRecipientOrderByCreatedAtDesc(UserAccount recipient);
     Optional<AppNotification> findByIdAndRecipient(Long id, UserAccount recipient);
     List<AppNotification> findByRecipientAndReadFalse(UserAccount recipient);
+    List<AppNotification> findByRecipientAndBookingIdAndReadFalse(UserAccount recipient, Long bookingId);
+    List<AppNotification> findByRecipientAndBookingId(UserAccount recipient, Long bookingId);
 }

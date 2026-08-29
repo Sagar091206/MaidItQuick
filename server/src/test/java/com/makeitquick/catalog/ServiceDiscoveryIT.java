@@ -82,7 +82,17 @@ class ServiceDiscoveryIT {
 
     @Test
     void serviceDetailReturnsFullDetails() throws Exception {
-        JsonNode item = expect(mockMvc.perform(get("/api/services/1")), 200);
+        JsonNode list = expect(mockMvc.perform(get("/api/services")), 200);
+        JsonNode bathroom = null;
+        for (JsonNode service : list) {
+            if ("Bathroom Cleaning".equals(service.get("name").asText())) {
+                bathroom = service;
+                break;
+            }
+        }
+        assertThat(bathroom).isNotNull();
+
+        JsonNode item = expect(mockMvc.perform(get("/api/services/" + bathroom.get("id").asLong())), 200);
         assertThat(item.get("name").asText()).isEqualTo("Bathroom Cleaning");
         assertThat(item.get("pricePaise").asInt()).isGreaterThan(0);
         assertThat(item.get("emoji").asText()).isEqualTo("🛁");

@@ -158,6 +158,8 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen>
           ...response,
           'online': online,
           'availabilityStatus': online ? 'ONLINE' : 'OFFLINE',
+          if (!online) 'newRequests': <Map<String, dynamic>>[],
+          if (!online) 'newRequestCount': 0,
         };
       });
 

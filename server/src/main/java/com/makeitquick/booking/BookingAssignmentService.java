@@ -7,6 +7,9 @@ import com.makeitquick.security.UserAccount;
 import com.makeitquick.worker.WorkerProfile;
 import com.makeitquick.worker.WorkerProfileRepository;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
@@ -42,15 +45,16 @@ public class BookingAssignmentService {
         this.bookings = bookings;
     }
 
-    public Optional<UserAccount> findBestWorker(List<String> services, String pinCode) {
+    public Optional<UserAccount> findBestWorker(List<String> services, String pinCode, String scheduledFor) {
+        ZonedDateTime serviceTime = LocalDateTime.parse(scheduledFor).atZone(ZoneId.of("Asia/Kolkata"));
         List<WorkerProfile> candidates = profiles.findAll().stream()
                 .filter(WorkerProfile::isReadyForJobs)
                 .filter(profile -> profile.getAvailability() == AvailabilityStatus.AVAILABLE)
-                .filter(WorkerProfile::isWorkingNow)
                 .filter(profile -> bookings.findByWorkerIdAndStatusIn(profile.getUser().getId(), ACTIVE_STATUSES).isEmpty())
                 .filter(profile -> coversServices(profile, services))
                 .sorted(Comparator
-                        .comparingInt((WorkerProfile profile) -> coversLocation(profile, pinCode) ? 0 : 1)
+                        .comparingInt((WorkerProfile profile) -> profile.isWorkingAt(serviceTime) ? 0 : 1)
+                        .thenComparingInt(profile -> coversLocation(profile, pinCode) ? 0 : 1)
                         .thenComparing(BookingAssignmentService::lastLocationUpdate, Comparator.reverseOrder())
                         .thenComparingLong(WorkerProfile::getId))
                 .toList();
@@ -66,7 +70,7 @@ public class BookingAssignmentService {
     public Optional<UserAccount> assignBest(Booking b, List<String> services,
                                             NotificationService notifications) {
         if (b.getStatus() != BookingStatus.REQUESTED && b.getStatus() != BookingStatus.SEARCHING) return Optional.empty();
-        Optional<UserAccount> best = findBestWorker(services, b.getPinCode());
+        Optional<UserAccount> best = findBestWorker(services, b.getPinCode(), b.getScheduledFor());
         if (best.isEmpty()) return Optional.empty();
         UserAccount worker = best.get();
         b.assign(worker);

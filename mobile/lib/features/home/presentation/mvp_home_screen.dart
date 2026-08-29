@@ -21,7 +21,6 @@ class MvpHomeScreen extends StatefulWidget {
     required this.api,
     required this.session,
     required this.onLogout,
-    required this.onOpenSettings,
     required this.onBookService,
     required this.onOpenBookings,
     required this.onInstantMaid,
@@ -30,7 +29,6 @@ class MvpHomeScreen extends StatefulWidget {
   final ApiClient api;
   final Session session;
   final VoidCallback onLogout;
-  final VoidCallback onOpenSettings;
   final Future<void> Function() onBookService;
   final VoidCallback onOpenBookings;
   final VoidCallback onInstantMaid;
@@ -232,11 +230,6 @@ class _MvpHomeScreenState extends State<MvpHomeScreen> {
       appBar: AppBar(
         title: const Text('MaidItQuick'),
         actions: [
-          IconButton(
-            onPressed: widget.onOpenSettings,
-            icon: const Icon(Icons.person_outline),
-            tooltip: 'Profile and settings',
-          ),
           IconButton(
             onPressed: widget.onLogout,
             icon: const Icon(Icons.logout),

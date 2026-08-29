@@ -4,7 +4,6 @@ import '../../../core/api_client.dart';
 import '../../../core/brand_theme.dart';
 import '../../../shared/widgets/profile_avatar.dart';
 import '../../auth/data/auth_repository.dart';
-import '../../booking/presentation/booking_history_screen.dart';
 import '../data/customer_profile_repository.dart';
 import 'customer_profile_screen.dart';
 
@@ -146,18 +145,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (mode != null && mode != widget.themeMode && mounted) {
       await widget.onThemeModeChanged(mode);
     }
-  }
-
-  Future<void> _openBookings() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (context) => BookingHistoryScreen(
-          api: widget.api,
-          session: widget.session,
-        ),
-      ),
-    );
-    if (mounted) await _load();
   }
 
   Future<void> _confirmLogout() async {
@@ -302,15 +289,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     color: context.brandCard,
                     child: Column(
                       children: [
-                        ListTile(
-                          leading: const Icon(Icons.receipt_long_outlined),
-                          title: const Text('My bookings'),
-                          subtitle:
-                              const Text('History, details and actions'),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: _openBookings,
-                        ),
-                        const Divider(height: 1),
                         ListTile(
                           leading: Icon(Icons.logout,
                               color: theme.colorScheme.error),

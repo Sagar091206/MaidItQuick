@@ -7,6 +7,7 @@ import com.makeitquick.admin.returns.ReturnRequest;
 import com.makeitquick.operations.ServiceAreaService;
 import com.makeitquick.security.*;
 import com.makeitquick.worker.WorkerSafetyService;
+import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.security.SecureRandom;
@@ -121,6 +122,9 @@ public class BookingController {
         List<Booking> x = u.getRole() == Role.ADMIN ? repo.findAll()
                 : u.getRole() == Role.WORKER ? repo.findByWorkerIdOrderByIdDesc(u.getId())
                 : repo.findByCustomerIdOrderByIdDesc(u.getId());
+        if (u.getRole() == Role.WORKER && !workerSafety.eligibleForDispatch(u)) {
+            x = x.stream().filter(booking -> booking.getStatus() != BookingStatus.ASSIGNED).toList();
+        }
         return x.stream().map(this::view).toList();
     }
 
@@ -128,12 +132,15 @@ public class BookingController {
     public Map<String, Object> detail(@RequestHeader("Authorization") String h, @PathVariable Long id) {
         UserAccount u = me(h);
         Booking b = get(id);
-        if (u.getRole() != Role.ADMIN && b.getWorker() != null && !b.getWorker().getId().equals(u.getId())
-                && !b.getCustomer().getId().equals(u.getId())) {
+        if (u.getRole() == Role.CUSTOMER && !b.getCustomer().getId().equals(u.getId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not permitted");
         }
         if (u.getRole() == Role.WORKER && (b.getWorker() == null || !b.getWorker().getId().equals(u.getId()))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not permitted");
+        }
+        if (u.getRole() == Role.WORKER && b.getStatus() == BookingStatus.ASSIGNED
+                && !workerSafety.eligibleForDispatch(u)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Go online to view new booking requests");
         }
         return view(b);
     }
@@ -151,40 +158,57 @@ public class BookingController {
         b.assign(w);
         b = repo.save(b);
         recordEvent(b, BookingStatus.ASSIGNED, "Assigned to " + w.getName());
-        notifications.send(w, NotificationType.WORKER_ASSIGNMENT, "New job assigned",
-                "You have been assigned " + b.getService() + " for " + b.getScheduledFor() + ".");
-        notifications.send(b.getCustomer(), NotificationType.BOOKING, "Awaiting worker acceptance",
-                "Your " + b.getService() + " request was sent to a worker. We will notify you after they accept.");
+        notifications.sendBooking(w, NotificationType.WORKER_ASSIGNMENT, "New job assigned",
+                "You have been assigned " + b.getService() + " for " + b.getScheduledFor() + ".", b.getId());
+        notifications.sendBooking(b.getCustomer(), NotificationType.BOOKING, "Awaiting worker acceptance",
+                "Your " + b.getService() + " request was sent to a worker. We will notify you after they accept.", b.getId());
         return view(b);
     }
 
     @PostMapping("/{id}/accept")
+    @Transactional
     public Map<String, Object> accept(@RequestHeader("Authorization") String h, @PathVariable Long id) {
         UserAccount u = me(h);
-        Booking b = get(id);
+        role(u, Role.WORKER);
+        Booking b = repo.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Booking not found"));
         if (b.getWorker() == null || !b.getWorker().getId().equals(u.getId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Assigned worker required");
         }
+        if (b.getStatus() == BookingStatus.ASSIGNED && !workerSafety.eligibleForDispatch(u)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Go online before accepting booking requests");
+        }
         if (b.getStatus() != BookingStatus.ASSIGNED) {
+            if (EnumSet.of(BookingStatus.ACCEPTED, BookingStatus.ON_THE_WAY, BookingStatus.ARRIVED,
+                    BookingStatus.IN_PROGRESS, BookingStatus.COMPLETED).contains(b.getStatus())) {
+                return view(b);
+            }
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only assigned bookings can be accepted");
         }
         b.accept();
-        b = repo.save(b);
+        b = repo.saveAndFlush(b);
         recordEvent(b, BookingStatus.ACCEPTED, "Worker " + u.getName() + " accepted the job");
-        notifications.send(b.getCustomer(), NotificationType.BOOKING, "Worker accepted",
-                "Your worker " + u.getName() + " has accepted your " + b.getService() + " booking.");
+        notifications.markBookingNotificationsRead(u, b.getId());
+        notifications.sendBooking(u, NotificationType.BOOKING, "Job accepted",
+                "Your accepted " + b.getService() + " job is ready to continue.", b.getId());
+        notifications.sendBooking(b.getCustomer(), NotificationType.BOOKING, "Worker accepted",
+                "Your worker " + u.getName() + " has accepted your " + b.getService() + " booking.", b.getId());
         return view(b);
     }
 
     @PostMapping("/{id}/reject")
     public Map<String, Object> reject(@RequestHeader("Authorization") String h, @PathVariable Long id) {
         UserAccount u = me(h);
+        role(u, Role.WORKER);
         Booking b = get(id);
         if (b.getWorker() == null || !b.getWorker().getId().equals(u.getId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Assigned worker required");
         }
         if (b.getStatus() != BookingStatus.ASSIGNED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only assigned bookings can be declined");
+        }
+        if (!workerSafety.eligibleForDispatch(u)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Go online before responding to booking requests");
         }
         b.unassign();
         b = repo.save(b);
