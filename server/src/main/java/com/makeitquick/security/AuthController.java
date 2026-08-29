@@ -1,6 +1,7 @@
 package com.makeitquick.security;
 
 import com.makeitquick.common.ProfilePhotos;
+import com.makeitquick.security.sms.SmsSender;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.security.SecureRandom;
@@ -33,6 +34,7 @@ public class AuthController {
     private final SessionResolver resolver;
     private final JwtService jwt;
     private final PasswordEncoder encoder;
+    private final SmsSender sms;
     private final SecureRandom random = new SecureRandom();
 
     @Value("${app.sms.enabled:false}")
@@ -53,6 +55,7 @@ public class AuthController {
             SessionResolver resolver,
             JwtService jwt,
             PasswordEncoder encoder,
+            SmsSender sms,
             ObjectProvider<JavaMailSender> mailSender) {
         this.auth = auth;
         users = u;
@@ -62,6 +65,7 @@ public class AuthController {
         this.resolver = resolver;
         this.jwt = jwt;
         this.encoder = encoder;
+        this.sms = sms;
         this.mailSender = mailSender;
     }
 
@@ -141,6 +145,7 @@ public class AuthController {
     }
 
     @PostMapping("/partner/otp/signup/start")
+    @Transactional
     public Map<String, Object> startPartnerSignup(@Valid @RequestBody PartnerSignupStart x) {
         String phone = normalizePhone(x.phone());
         if (users.findByPhoneAndRole(phone, Role.WORKER).isPresent()) {
@@ -152,6 +157,7 @@ public class AuthController {
     }
 
     @PostMapping("/partner/otp/login/start")
+    @Transactional
     public Map<String, Object> startPartnerLogin(@Valid @RequestBody PartnerLoginStart x) {
         String phone = normalizePhone(x.phone());
         users.findByPhoneAndRole(phone, Role.WORKER)
@@ -248,6 +254,9 @@ public class AuthController {
         partnerOtps.save(new PartnerOtp(
                 phone, name, gender, dob, profileImage, purpose, encoder.encode(otp),
                 Instant.now().plus(Duration.ofMinutes(10))));
+        String deliveryPurpose = "partner-" + purpose.name().toLowerCase(Locale.ROOT);
+        sms.sendOtp(phone, otp, deliveryPurpose);
+        log.info("Partner OTP issued for {} ({})", maskPhone(phone), deliveryPurpose);
         Map<String, Object> response = new HashMap<>(Map.of(
                 "message", "OTP sent", "phone", phone, "expiresInSeconds", 600));
         if (!smsEnabled) {
@@ -293,6 +302,11 @@ public class AuthController {
         int at = email.indexOf('@');
         if (at <= 1) return "***" + email.substring(at);
         return email.substring(0, 1) + "***" + email.substring(at);
+    }
+
+    private static String maskPhone(String phone) {
+        if (phone == null || phone.length() < 6) return "unknown";
+        return phone.substring(0, phone.length() - 4) + "****";
     }
 
     private String normalizePhone(String raw) {

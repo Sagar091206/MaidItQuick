@@ -1,6 +1,8 @@
 package com.makeitquick.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -8,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.makeitquick.security.sms.SmsSender;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,6 +21,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /**
  * End-to-end tests for the unified customer authentication flow against an
@@ -42,6 +46,9 @@ class AuthFlowIT {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @MockitoBean
+    private SmsSender smsSender;
 
     @Test
     void sendOtpReturnsCodeAndExpiry() throws Exception {
@@ -209,6 +216,31 @@ class AuthFlowIT {
                 "purpose", "login",
                 "otp", loginSent.get("devOtp").asText()));
         assertThat(partnerAgain.get("role").asText()).isEqualTo("WORKER");
+    }
+
+    @Test
+    void partnerSignupAndLoginDeliverVerifiableOtps() throws Exception {
+        String phone = "+919999000032";
+
+        JsonNode signupSent = postJson("/api/auth/partner/otp/signup/start",
+                Map.of("name", "OTP Delivery Partner", "phone", phone));
+        String signupOtp = signupSent.get("devOtp").asText();
+        verify(smsSender).sendOtp(phone, signupOtp, "partner-signup");
+
+        JsonNode signedUp = postJson("/api/auth/partner/otp/verify", Map.of(
+                "phone", phone, "purpose", "signup", "otp", signupOtp));
+        assertThat(signedUp.get("role").asText()).isEqualTo("WORKER");
+        assertThat(signedUp.get("token").asText()).isNotBlank();
+
+        clearInvocations(smsSender);
+        JsonNode loginSent = postJson("/api/auth/partner/otp/login/start", Map.of("phone", phone));
+        String loginOtp = loginSent.get("devOtp").asText();
+        verify(smsSender).sendOtp(phone, loginOtp, "partner-login");
+
+        JsonNode signedIn = postJson("/api/auth/partner/otp/verify", Map.of(
+                "phone", phone, "purpose", "login", "otp", loginOtp));
+        assertThat(signedIn.get("role").asText()).isEqualTo("WORKER");
+        assertThat(signedIn.get("token").asText()).isNotBlank();
     }
 
     @Test

@@ -262,16 +262,19 @@ public class WorkerProfile {
     }
 
     public boolean isWorkingNow() {
+        return isWorkingAt(java.time.ZonedDateTime.now(ZoneId.of("Asia/Kolkata")));
+    }
+
+    public boolean isWorkingAt(java.time.ZonedDateTime time) {
         if (workingDays == null || workingDays.isBlank() || workingStartTime == null || workingEndTime == null) return true;
         try {
-            var now = java.time.ZonedDateTime.now(ZoneId.of("Asia/Kolkata"));
-            String day = now.getDayOfWeek().name().toLowerCase(Locale.ROOT);
+            String day = time.getDayOfWeek().name().toLowerCase(Locale.ROOT);
             boolean scheduledToday = java.util.Arrays.stream(workingDays.toLowerCase(Locale.ROOT).split("[,/;]"))
                     .map(String::trim).anyMatch(value -> value.equals(day) || value.startsWith(day.substring(0, 3)));
             if (!scheduledToday) return false;
             LocalTime start = LocalTime.parse(workingStartTime);
             LocalTime end = LocalTime.parse(workingEndTime);
-            LocalTime current = now.toLocalTime();
+            LocalTime current = time.toLocalTime();
             return end.isAfter(start)
                     ? !current.isBefore(start) && !current.isAfter(end)
                     : !current.isBefore(start) || !current.isAfter(end);

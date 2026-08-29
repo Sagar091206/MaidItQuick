@@ -58,7 +58,6 @@ void main() {
       api: _FakeApi(),
       session: const Session(token: 't', role: 'customer', name: 'Riya'),
       onLogout: () {},
-      onOpenSettings: () {},
       onBookService: () async {},
       onInstantMaid: () {},
       onOpenBookings: () {},
@@ -71,6 +70,7 @@ void main() {
     expect(find.text('Bathroom Cleaning'), findsWidgets);
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Change'), findsOneWidget);
+    expect(find.byTooltip('Profile and settings'), findsNothing);
   });
 
   testWidgets('shows the active booking hero with a track action',
@@ -79,7 +79,6 @@ void main() {
       api: _FakeApi(),
       session: const Session(token: 't', role: 'customer', name: 'Riya'),
       onLogout: () {},
-      onOpenSettings: () {},
       onBookService: () async {},
       onInstantMaid: () {},
       onOpenBookings: () {},
@@ -88,7 +87,7 @@ void main() {
 
     expect(find.text('Active booking'), findsOneWidget);
     expect(find.text('Track booking'), findsOneWidget);
-    expect(find.text('ASSIGNED'), findsOneWidget);
+    expect(find.text('AWAITING ACCEPTANCE'), findsOneWidget);
   });
 
   testWidgets('shows error state with retry when the network fails',
@@ -97,7 +96,6 @@ void main() {
       api: _FakeApi(fail: true),
       session: const Session(token: 't', role: 'customer', name: 'Riya'),
       onLogout: () {},
-      onOpenSettings: () {},
       onBookService: () async {},
       onInstantMaid: () {},
       onOpenBookings: () {},

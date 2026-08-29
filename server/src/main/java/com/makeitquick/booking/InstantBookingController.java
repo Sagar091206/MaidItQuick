@@ -82,7 +82,8 @@ public class InstantBookingController {
         Booking booking = bookings.findByIdForUpdate(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Instant booking not found"));
         if (booking.getPaymentStatus() != PaymentStatus.PAID) throw new ResponseStatusException(HttpStatus.CONFLICT, "Customer payment is pending");
 
-        if (booking.getStatus() == BookingStatus.ACCEPTED
+        if (List.of(BookingStatus.ACCEPTED, BookingStatus.ON_THE_WAY, BookingStatus.ARRIVED,
+                        BookingStatus.IN_PROGRESS, BookingStatus.COMPLETED).contains(booking.getStatus())
                 && booking.getWorker() != null
                 && booking.getWorker().getId().equals(worker.getId())) {
             return view(booking);
@@ -107,8 +108,11 @@ public class InstantBookingController {
         Booking saved = bookings.saveAndFlush(booking);
         bookingEvents.save(new BookingEvent(saved, BookingStatus.ACCEPTED,
                 "Worker " + worker.getName() + " accepted the instant booking"));
-        notifications.send(saved.getCustomer(), NotificationType.BOOKING, "Maid assigned", worker.getName()+" accepted your instant cleaning request.");
-        notifications.send(worker, NotificationType.WORKER_ASSIGNMENT, "Instant booking accepted", "Open the booking to view full service details.");
+        notifications.markBookingNotificationsRead(worker, saved.getId());
+        notifications.sendBooking(saved.getCustomer(), NotificationType.BOOKING, "Maid assigned",
+                worker.getName()+" accepted your instant cleaning request.", saved.getId());
+        notifications.sendBooking(worker, NotificationType.WORKER_ASSIGNMENT, "Instant booking accepted",
+                "Open the booking to view full service details.", saved.getId());
         return view(saved);
     }
 
