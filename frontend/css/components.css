@@ -575,6 +575,19 @@
   color: var(--text-3);
   border-bottom-color: transparent;
 }
+.nav-more-panel {
+  position: fixed;
+  width: min(280px, calc(100vw - 16px));
+  min-width: 0;
+  max-height: min(520px, calc(100vh - 130px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.nav-more-panel.open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
 
 /* ---------- Theme toggle ---------- */
 .icon-btn {
