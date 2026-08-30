@@ -5,6 +5,7 @@ import com.makeitquick.booking.Booking;
 import com.makeitquick.booking.BookingRepository;
 import com.makeitquick.booking.BookingStatus;
 import com.makeitquick.booking.PartnerAvailabilityBookingService;
+import com.makeitquick.booking.ScheduledBookingDispatchService;
 import com.makeitquick.operations.AvailabilityStatus;
 import com.makeitquick.payment.PaymentStatus;
 import com.makeitquick.security.Role;
@@ -60,6 +61,7 @@ public class WorkerSafetyController {
     private final SessionResolver resolver;
     private final BookingRepository bookings;
     private final PartnerAvailabilityBookingService availabilityBookings;
+    private final ScheduledBookingDispatchService scheduledDispatch;
     private final SettingRepository settings;
     private final Path uploadDirectory;
 
@@ -68,12 +70,14 @@ public class WorkerSafetyController {
             SessionResolver resolver,
             BookingRepository bookings,
             PartnerAvailabilityBookingService availabilityBookings,
+            ScheduledBookingDispatchService scheduledDispatch,
             SettingRepository settings,
             @Value("${app.uploads.directory:uploads/kyc}") String uploadDirectory) {
         this.profiles = profiles;
         this.resolver = resolver;
         this.bookings = bookings;
         this.availabilityBookings = availabilityBookings;
+        this.scheduledDispatch = scheduledDispatch;
         this.settings = settings;
         this.uploadDirectory = Path.of(uploadDirectory).toAbsolutePath().normalize();
     }
@@ -206,7 +210,12 @@ public class WorkerSafetyController {
         }
         profile.setAvailability(input.status());
         WorkerProfile saved = profiles.save(profile);
-        if (input.status() != AvailabilityStatus.AVAILABLE) {
+        if (input.status() == AvailabilityStatus.AVAILABLE) {
+            // Do not make a newly-online partner wait for the periodic dispatcher.
+            // Only still-unassigned paid requests are eligible, so bookings already
+            // taken by another partner remain untouched.
+            scheduledDispatch.retryUnassignedPaidBookings();
+        } else {
             availabilityBookings.releasePendingScheduledRequests(profile.getUser());
         }
         return view(saved);
