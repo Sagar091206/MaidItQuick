@@ -170,6 +170,29 @@ class BookingLifecycleIT {
     }
 
     @Test
+    void goingOnlineImmediatelyReceivesStillUnassignedPaidRequest() throws Exception {
+        UserAccount customer = newCustomer("+919800000033", true);
+        UserAccount worker = newEligibleWorker("+919800000034");
+        WorkerProfile profile = profiles.findByUser_Id(worker.getId()).orElseThrow();
+        profile.setAvailability(AvailabilityStatus.OFFLINE);
+        profiles.save(profile);
+
+        JsonNode created = createBooking(customer, null, futureTime());
+        long id = created.get("id").asLong();
+        payFor(customer, id, "UPI");
+        assertThat(expect(mockMvc.perform(get("/api/bookings/" + id)
+                .header("Authorization", "Bearer " + jwt.issue(customer))), 200)
+                .get("status").asText()).isEqualTo("REQUESTED");
+
+        postWith(worker, "/api/workers/me/availability", Map.of("status", "AVAILABLE"));
+
+        JsonNode assigned = expect(mockMvc.perform(get("/api/bookings/" + id)
+                .header("Authorization", "Bearer " + jwt.issue(customer))), 200);
+        assertThat(assigned.get("status").asText()).isEqualTo("ASSIGNED");
+        assertThat(assigned.get("worker").asText()).isEqualTo(worker.getName());
+    }
+
+    @Test
     void goingOfflineReleasesAndHidesPendingScheduledRequest() throws Exception {
         UserAccount customer = newCustomer("+919800000024", true);
         UserAccount worker = newEligibleWorker("+919800000025");

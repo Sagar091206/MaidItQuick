@@ -91,13 +91,25 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen>
           List<Map<String, dynamic>>.from(results[3] as List)
               .map((booking) => {...booking, 'isInstantRequest': true})
               .toList();
-      final requests = [
-        ...instantRequests,
-        ...bookings
-            .where((booking) => booking['status']?.toString() == 'ASSIGNED'),
-      ];
+      final availability = (dashboard['availability'] ??
+              dashboard['availabilityStatus'] ??
+              dashboard['online'])
+          ?.toString()
+          .toUpperCase();
+      final isOnline = dashboard['online'] == true ||
+          availability == 'ONLINE' ||
+          availability == 'AVAILABLE' ||
+          availability == 'TRUE';
+      final requests = isOnline
+          ? [
+              ...instantRequests,
+              ...bookings.where(
+                  (booking) => booking['status']?.toString() == 'ASSIGNED'),
+            ]
+          : <Map<String, dynamic>>[];
       final otherBookings = bookings
-          .where((booking) => booking['status']?.toString() != 'ASSIGNED')
+          .where((booking) => !const {'ASSIGNED', 'REQUESTED', 'SEARCHING'}
+              .contains(booking['status']?.toString()))
           .toList();
 
       if (!mounted) return;
@@ -168,6 +180,11 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen>
             ? 'You are online and can receive booking requests.'
             : 'You are now offline.',
       );
+      if (online) {
+        // Going online can immediately assign a still-pending request on the
+        // backend. Refresh now instead of waiting for the polling timer.
+        await _loadDashboard(showMessage: false);
+      }
     } on ApiException catch (error) {
       _showMessage(error.message);
     } catch (_) {
@@ -297,7 +314,8 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen>
   }
 
   bool get _online {
-    final value = _dashboard?['online'] ??
+    final value = _dashboard?['availability'] ??
+        _dashboard?['online'] ??
         _dashboard?['isOnline'] ??
         _dashboard?['availabilityStatus'];
 
