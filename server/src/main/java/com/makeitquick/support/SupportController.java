@@ -92,7 +92,8 @@ public class SupportController {
     private Map<String, Object> view(SupportTicket ticket) {
         return Map.of("id", ticket.getId(), "subject", ticket.getSubject(), "message", ticket.getMessage(),
                 "reply", ticket.getAdminReply() == null ? "" : ticket.getAdminReply(), "status", ticket.getStatus(),
-                "requester", ticket.getRequester().getName(), "createdAt", ticket.getCreatedAt());
+                "requester", ticket.getRequester().getName(), "requesterRole", ticket.getRequester().getRole(),
+                "createdAt", ticket.getCreatedAt());
     }
     record TicketInput(@NotBlank String subject, @NotBlank String message) {}
     record ReplyInput(@NotBlank String message) {}

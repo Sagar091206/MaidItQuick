@@ -80,16 +80,29 @@ public class CatalogController {
     @PostMapping
     public ServiceItem add(@RequestHeader(value = "Authorization", required = false) String authorization,
                            @Valid @RequestBody ServiceInput input) {
+        return createService(authorization, input.name(), input.priceRupees(), input.description(),
+                input.defaultDurationMinutes(), input.enabled());
+    }
+
+    /** Admin catalogue endpoint accepting every field displayed in the admin form. */
+    @PostMapping("/admin")
+    public ServiceItem addForAdmin(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                   @Valid @RequestBody UpdateServiceInput input) {
+        return createService(authorization, input.name(), input.priceRupees(), input.description(),
+                input.defaultDurationMinutes(), input.enabled());
+    }
+
+    private ServiceItem createService(String authorization, String inputName, int priceRupees,
+                                      String description, Integer durationMinutes, Boolean enabled) {
         requireAdmin(authorization);
-        String name = input.name().trim();
+        String name = inputName.trim();
         if (services.findByNameIgnoreCase(name).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Service already exists");
         }
-        ServiceItem item = new ServiceItem(name, input.priceRupees() * 100);
-        item.setDescription(input.description() == null ? "" : input.description().trim());
-        item.setDefaultDurationMinutes(input.defaultDurationMinutes() == null
-                ? 60 : Math.max(1, input.defaultDurationMinutes()));
-        item.setEnabled(input.enabled() == null || input.enabled());
+        ServiceItem item = new ServiceItem(name, priceRupees * 100);
+        item.setDescription(description == null ? "" : description.trim());
+        item.setDefaultDurationMinutes(durationMinutes == null ? 60 : Math.max(1, durationMinutes));
+        item.setEnabled(enabled == null || enabled);
         return services.save(item);
     }
 
