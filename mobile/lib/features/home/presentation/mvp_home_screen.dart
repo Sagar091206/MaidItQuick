@@ -12,8 +12,7 @@ import '../data/customer_dashboard_repository.dart';
 
 /// Premium home dashboard for the signed-in customer.
 ///
-/// Renders the greeting, default service address (with a switcher), the
-/// service catalog grouped by category chips, an active-booking hero card
+/// Renders the greeting, service catalog grouped by category chips, an active-booking hero card
 /// when one exists, and full loading / empty / error / offline states.
 class MvpHomeScreen extends StatefulWidget {
   const MvpHomeScreen({
@@ -45,7 +44,6 @@ class _MvpHomeScreenState extends State<MvpHomeScreen> {
   bool _offline = false;
   String? _error;
   String _category = 'All';
-  bool _switchingAddress = false;
 
   @override
   void initState() {
@@ -142,50 +140,6 @@ class _MvpHomeScreenState extends State<MvpHomeScreen> {
     if (mounted) await _loadDashboard();
   }
 
-  /// Lets the customer pick another saved address as the default one.
-  Future<void> _changeAddress() async {
-    final dashboard = _dashboard;
-    if (dashboard == null || dashboard.addresses.isEmpty) {
-      await _openBookingFlow();
-      return;
-    }
-    final picked = await showModalBottomSheet<DashboardAddress>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => _AddressSwitcherSheet(
-        addresses: dashboard.addresses,
-        selected: dashboard.defaultAddress,
-      ),
-    );
-    if (picked == null || !mounted) return;
-    final current = dashboard.defaultAddress;
-    if (current != null && current.id == picked.id) return;
-    setState(() => _switchingAddress = true);
-    try {
-      final saved =
-          await _repository.setDefaultAddress(widget.session.token, picked.id);
-      if (!mounted) return;
-      setState(() {
-        final updated = _dashboard;
-        if (updated != null) {
-          _dashboard = CustomerDashboard(
-            welcomeName: updated.welcomeName,
-            addresses: updated.addresses
-                .map((a) => a.id == saved.id ? saved : a)
-                .toList(),
-            services: updated.services,
-            activeBooking: updated.activeBooking,
-            recentBooking: updated.recentBooking,
-          );
-        }
-      });
-    } on ApiException catch (error) {
-      _showMessage(error.message);
-    } finally {
-      if (mounted) setState(() => _switchingAddress = false);
-    }
-  }
-
   void _showMessage(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context)
@@ -257,11 +211,9 @@ class _MvpHomeScreenState extends State<MvpHomeScreen> {
                               categories: _categories,
                               category: _category,
                               services: _filteredServices,
-                              switchingAddress: _switchingAddress,
                               onCategorySelected: (category) =>
                                   setState(() => _category = category),
                               onBookService: _openBookingFlow,
-                              onChangeAddress: _changeAddress,
                               onOpenServiceDetails: _openServiceDetails,
                               onTrackBooking: _openTrackBooking,
                               onOpenBookings: widget.onOpenBookings,
@@ -283,10 +235,8 @@ class _DashboardBody extends StatelessWidget {
     required this.categories,
     required this.category,
     required this.services,
-    required this.switchingAddress,
     required this.onCategorySelected,
     required this.onBookService,
-    required this.onChangeAddress,
     required this.onOpenServiceDetails,
     required this.onTrackBooking,
     required this.onOpenBookings,
@@ -298,10 +248,8 @@ class _DashboardBody extends StatelessWidget {
   final List<String> categories;
   final String category;
   final List<ServiceCategory> services;
-  final bool switchingAddress;
   final ValueChanged<String> onCategorySelected;
   final VoidCallback onBookService;
-  final VoidCallback onChangeAddress;
   final ValueChanged<ServiceCategory> onOpenServiceDetails;
   final ValueChanged<DashboardBooking> onTrackBooking;
   final VoidCallback onOpenBookings;
@@ -311,7 +259,6 @@ class _DashboardBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final name =
         dashboard.welcomeName.trim().isEmpty ? 'there' : dashboard.welcomeName;
-    final defaultAddress = dashboard.defaultAddress;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
       children: [
@@ -338,23 +285,6 @@ class _DashboardBody extends StatelessWidget {
                   icon: const Icon(Icons.bolt),
                   label: const Text('Instant')))
         ]),
-        const SizedBox(height: 22),
-        const SectionHeader(title: 'Service address'),
-        const SizedBox(height: 10),
-        if (defaultAddress == null)
-          EmptyStateView(
-            icon: Icons.location_off_outlined,
-            title: 'No saved address yet',
-            message: 'Add your service address to start booking.',
-            actionLabel: 'Add address',
-            onAction: onChangeAddress,
-          )
-        else
-          _DefaultAddressCard(
-            address: defaultAddress,
-            busy: switchingAddress,
-            onChange: onChangeAddress,
-          ),
         const SizedBox(height: 24),
         if (dashboard.activeBooking != null) ...[
           SectionHeader(
@@ -439,126 +369,6 @@ class _DashboardBody extends StatelessWidget {
         else
           _BookingCard(booking: dashboard.recentBooking!),
       ],
-    );
-  }
-}
-
-/// Default service address card with a "Change" action that opens the
-/// address switcher bottom sheet.
-class _DefaultAddressCard extends StatelessWidget {
-  const _DefaultAddressCard({
-    required this.address,
-    required this.busy,
-    required this.onChange,
-  });
-
-  final DashboardAddress address;
-  final bool busy;
-  final VoidCallback onChange;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = context.scheme;
-    return Card(
-      color: context.brandCard,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.location_on_outlined, color: scheme.primary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    address.label,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w800),
-                  ),
-                ),
-                TextButton(
-                  onPressed: busy ? null : onChange,
-                  child: busy
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Change'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              address.address,
-              style: TextStyle(color: context.brandMuted, height: 1.3),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'PIN ${address.pinCode}',
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Bottom sheet listing the saved addresses for switching the default.
-class _AddressSwitcherSheet extends StatelessWidget {
-  const _AddressSwitcherSheet({
-    required this.addresses,
-    required this.selected,
-  });
-
-  final List<DashboardAddress> addresses;
-  final DashboardAddress? selected;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
-            child: Text(
-              'Change service address',
-              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
-            ),
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child: Text(
-              'The selected address becomes your default booking address.',
-              style: TextStyle(color: BrandColors.muted, fontSize: 13),
-            ),
-          ),
-          const SizedBox(height: 8),
-          for (final address in addresses)
-            ListTile(
-              leading: Icon(
-                address.id == selected?.id
-                    ? Icons.check_circle
-                    : Icons.location_on_outlined,
-                color: address.id == selected?.id
-                    ? Theme.of(context).colorScheme.primary
-                    : null,
-              ),
-              title: Text(address.label),
-              subtitle: Text(
-                '${address.address}\nPIN ${address.pinCode}',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              onTap: () => Navigator.of(context).pop(address),
-            ),
-          const SizedBox(height: 12),
-        ],
-      ),
     );
   }
 }
