@@ -42,6 +42,7 @@ export const MODULES = [
   { path: "admins", label: "Admins", group: "More", permission: "ADMINS_MANAGE", icon: "i-admin" },
   { path: "roles", label: "Roles", group: "More", permission: "ROLES_READ", icon: "i-roles" },
   { path: "services", label: "Services", group: "More", permission: "SERVICES_READ", icon: "i-services" },
+  { path: "service-areas", label: "Service Areas", group: "More", permission: "SERVICES_READ", icon: "i-pin" },
   { path: "categories", label: "Categories", group: "More", permission: "CATEGORIES_READ", icon: "i-categories" },
   { path: "reviews", label: "Reviews", group: "More", permission: "REVIEWS_READ", icon: "i-reviews" },
   { path: "notifications", label: "Notifications", group: "More", permission: "NOTIFICATIONS_READ", icon: "i-notifications" },

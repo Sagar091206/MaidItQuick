@@ -85,7 +85,12 @@ public class CatalogController {
         if (services.findByNameIgnoreCase(name).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Service already exists");
         }
-        return services.save(new ServiceItem(name, input.priceRupees() * 100));
+        ServiceItem item = new ServiceItem(name, input.priceRupees() * 100);
+        item.setDescription(input.description() == null ? "" : input.description().trim());
+        item.setDefaultDurationMinutes(input.defaultDurationMinutes() == null
+                ? 60 : Math.max(1, input.defaultDurationMinutes()));
+        item.setEnabled(input.enabled() == null || input.enabled());
+        return services.save(item);
     }
 
     @PostMapping("/{id}/enabled")
@@ -154,7 +159,12 @@ public class CatalogController {
         if (role != Role.ADMIN) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin access required");
     }
 
-    record ServiceInput(@NotBlank String name, @Min(1) int priceRupees) {}
+    record ServiceInput(
+            @NotBlank String name,
+            @Min(1) int priceRupees,
+            String description,
+            Integer defaultDurationMinutes,
+            Boolean enabled) {}
     record EnabledInput(boolean enabled) {}
     record UpdateServiceInput(@NotBlank String name,@Min(1) int priceRupees,String description,@Min(1) int defaultDurationMinutes,boolean enabled){}
     record OfferingInput(@Min(1) int priceRupees,boolean enabled){}

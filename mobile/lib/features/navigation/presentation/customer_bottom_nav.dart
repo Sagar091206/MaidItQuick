@@ -11,6 +11,7 @@ import '../../notifications/presentation/customer_alerts_screen.dart';
 import '../../profile/data/customer_profile_repository.dart';
 import '../../profile/presentation/customer_profile_screen.dart';
 import '../../profile/presentation/profile_tab.dart';
+import '../../profile/presentation/saved_addresses_screen.dart';
 import '../../profile/presentation/settings_screen.dart';
 
 /// Root scaffold for the signed-in customer: a Material 3 bottom
@@ -103,6 +104,17 @@ class _CustomerBottomNavState extends State<CustomerBottomNav> {
     );
   }
 
+  Future<void> _openSavedAddresses() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (context) => SavedAddressesScreen(
+          api: widget.api,
+          session: widget.session,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = widget.session;
@@ -128,6 +140,7 @@ class _CustomerBottomNavState extends State<CustomerBottomNav> {
         onLogout: widget.onLogout,
         onOpenProfileEditor: _openProfileEditor,
         onOpenSettings: _openSettings,
+        onOpenSavedAddresses: _openSavedAddresses,
       ),
     ];
 

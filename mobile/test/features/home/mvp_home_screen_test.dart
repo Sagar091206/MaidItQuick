@@ -68,8 +68,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Hello, Riya'), findsOneWidget);
     expect(find.text('Bathroom Cleaning'), findsWidgets);
-    expect(find.text('Home'), findsOneWidget);
-    expect(find.text('Change'), findsOneWidget);
+    expect(find.text('Home'), findsNothing);
+    expect(find.text('Change'), findsNothing);
     expect(find.byTooltip('Profile and settings'), findsNothing);
   });
 

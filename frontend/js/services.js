@@ -46,10 +46,7 @@ async function editService(service, reload) {
     const body = { name: String(data.get("name")).trim(), priceRupees, description: String(data.get("description") || ""), defaultDurationMinutes: Number(data.get("duration")), enabled: data.get("enabled") === "true" };
     try {
       if (service) await rootApi.put(`/api/services/admin/${service.id}`, body);
-      else {
-        const created = await rootApi.post("/api/services", { name: body.name, priceRupees });
-        await rootApi.put(`/api/services/admin/${created.id}`, body);
-      }
+      else await rootApi.post("/api/services", body);
       closeTopModal(); toast("Service saved", "success"); await reload();
     } catch (err) { toast(err.message || "Could not save service", "error"); }
   });
