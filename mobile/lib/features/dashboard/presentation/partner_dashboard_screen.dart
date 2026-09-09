@@ -477,6 +477,11 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen>
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          onPressed: () => Navigator.of(context).maybePop(),
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back',
+        ),
         title: const Text('Partner dashboard'),
         actions: [
           IconButton(
