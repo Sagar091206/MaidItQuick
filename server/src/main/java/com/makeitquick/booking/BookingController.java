@@ -4,6 +4,8 @@ import com.makeitquick.notification.NotificationService;
 import com.makeitquick.notification.NotificationType;
 import com.makeitquick.admin.returns.ReturnRepository;
 import com.makeitquick.admin.returns.ReturnRequest;
+import com.makeitquick.operations.RefundNotificationService;
+import com.makeitquick.operations.RefundRulesEngine;
 import com.makeitquick.operations.ServiceAreaService;
 import com.makeitquick.security.*;
 import com.makeitquick.worker.WorkerSafetyService;
@@ -11,7 +13,9 @@ import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.util.*;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -36,14 +40,26 @@ public class BookingController {
     private final BookingPricingService pricing;
     private final CommissionService commissions;
     private final PasswordEncoder encoder;
+<<<<<<< Updated upstream
+    private final RefundRulesEngine refundRulesEngine;
+    private final RefundNotificationService refundNotifications;
+=======
+>>>>>>> Stashed changes
     private final boolean smsEnabled;
     private final SecureRandom random = new SecureRandom();
 
     BookingController(BookingRepository r, BookingServiceRepository bs, BookingEventRepository events,
                       SessionResolver resolver, UserRepository users, NotificationService n, WorkerSafetyService w,
                       ReturnRepository returns, ServiceAreaService areas, ServiceCatalogService catalog,
+<<<<<<< Updated upstream
                       BookingAssignmentService assigner, BookingPricingService pricing, CommissionService commissions,
                       PasswordEncoder encoder,
+                      RefundRulesEngine refundRulesEngine,
+                      RefundNotificationService refundNotifications,
+=======
+                      BookingAssignmentService assigner, BookingPricingService pricing,
+                      PasswordEncoder encoder,
+>>>>>>> Stashed changes
                       @Value("${app.sms.enabled:false}") boolean smsEnabled) {
         repo = r;
         bookingServices = bs;
@@ -59,6 +75,11 @@ public class BookingController {
         this.pricing = pricing;
         this.commissions = commissions;
         this.encoder = encoder;
+<<<<<<< Updated upstream
+        this.refundRulesEngine = refundRulesEngine;
+        this.refundNotifications = refundNotifications;
+=======
+>>>>>>> Stashed changes
         this.smsEnabled = smsEnabled;
     }
 
@@ -234,25 +255,95 @@ public class BookingController {
         if (b.getStatus() == BookingStatus.CANCELLED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking is already cancelled");
         }
-        if (b.getStatus() == BookingStatus.IN_PROGRESS || b.getStatus() == BookingStatus.COMPLETED
-                || b.getStatus() == BookingStatus.ON_THE_WAY) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking cannot be cancelled after the worker is on the way");
+        if (b.getStatus() == BookingStatus.COMPLETED || b.getStatus() == BookingStatus.EXPIRED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Completed or expired bookings cannot be cancelled");
         }
         if (worker && b.getStatus() != BookingStatus.ASSIGNED && b.getStatus() != BookingStatus.ACCEPTED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A partner can cancel only an assigned or accepted booking");
         }
         if (customer && b.getStatus() != BookingStatus.REQUESTED
+                && b.getStatus() != BookingStatus.SEARCHING
                 && b.getStatus() != BookingStatus.ASSIGNED
-                && b.getStatus() != BookingStatus.ACCEPTED) {
+                && b.getStatus() != BookingStatus.ACCEPTED
+                && b.getStatus() != BookingStatus.ON_THE_WAY
+                && b.getStatus() != BookingStatus.ARRIVED
+                && b.getStatus() != BookingStatus.IN_PROGRESS) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Only requested, assigned or accepted bookings can be cancelled");
+                    "Booking cannot be cancelled in status: " + b.getStatus());
         }
-        // Paid bookings may still be cancelled; the refund is requested via
-        // /refund-request afterwards (MVP: no hard block).
-        b.cancel(x.reason());
+
+        String stage = switch (b.getStatus()) {
+            case SEARCHING, REQUESTED -> "BEFORE_ASSIGNMENT";
+            case ASSIGNED, ACCEPTED -> "AFTER_ASSIGNMENT";
+            case ON_THE_WAY -> "BEFORE_ARRIVAL";
+            case ARRIVED -> "AFTER_ARRIVAL";
+            case IN_PROGRESS -> "DURING_SERVICE";
+            default -> b.getStatus().name();
+        };
+        String actor = customer ? "CUSTOMER" : (worker ? "WORKER" : "ADMIN");
+
+        b.cancel(x.reason().trim(), stage, actor, x.details() != null ? x.details().trim() : null);
         b = repo.save(b);
-        recordEvent(b, BookingStatus.CANCELLED, "Cancelled by " + u.getName() + ": " + x.reason());
+
+        recordEvent(b, BookingStatus.CANCELLED, "Cancelled by " + u.getName() + " (" + actor + ", Stage: " + stage + "): "
+                + x.reason().trim() + (x.details() != null && !x.details().isBlank() ? " - " + x.details().trim() : ""));
+
+        // If booking was paid and no refund request exists yet, auto-generate recommendation and notify admin
+        if (b.getPaymentStatus() == com.makeitquick.payment.PaymentStatus.PAID
+                && returns.findTopByBookingIdOrderByCreatedAtDesc(b.getId()).isEmpty()) {
+            ReturnRequest refund = new ReturnRequest();
+            refund.setBookingId(b.getId());
+            refund.setRequestedAmount(java.math.BigDecimal.valueOf(b.getPaymentAmountPaise(), 2));
+            String fullReason = x.reason().trim() + (x.details() != null && !x.details().isBlank() ? " - " + x.details().trim() : "");
+            refund.setReason(fullReason);
+            refund.setCancellationStage(stage);
+            refund.setCancellationReason(x.reason().trim());
+            refund = returns.save(refund);
+
+            int serviceDeliveredPercent = 0;
+            if ("DURING_SERVICE".equals(stage) || b.getStartOtpHash() != null) {
+                serviceDeliveredPercent = 50;
+            }
+            if (b.getEndOtpHash() != null) {
+                serviceDeliveredPercent = 100;
+            }
+
+            int amountPaise = b.getPaymentAmountPaise();
+            RefundRulesEngine.RefundRecommendation recommendation =
+                refundRulesEngine.evaluate(
+                    fullReason,
+                    b,
+                    amountPaise,
+                    serviceDeliveredPercent,
+                    x.reason().trim(),
+                    null,
+                    stage);
+
+            refund.setFaultType(recommendation.faultType());
+            refund.setSeverity(recommendation.severity());
+            refund.setRecommendedResolution(recommendation.recommendedResolution());
+            refund.setRecommendedRefundPercentage(recommendation.recommendedRefundPercentage());
+            refund.setRecommendedRefundAmountPaise(recommendation.recommendedRefundAmountPaise());
+            refund.setEvidenceRequired(recommendation.evidenceRequired());
+            refund.setRecommendationReason(recommendation.recommendationReason());
+            refund.setSystemRecommendationAt(Instant.now());
+            refund = returns.save(refund);
+
+            refundNotifications.notifyAdminOnRefundCreated(refund, b, b.getCustomer());
+
+            try {
+                var adminUser = users.findByRole(Role.ADMIN, PageRequest.of(0, 1)).stream().findFirst().orElse(null);
+                if (adminUser != null) {
+                    notifications.send(adminUser, NotificationType.OPERATIONS, "New Refund Request - RR-" + refund.getId(),
+                        "Refund Request ID: RR-" + refund.getId() + "\n" +
+                        "Booking ID: BK-" + refund.getBookingId() + "\n" +
+                        "Customer: " + b.getCustomer().getName() + "\n" +
+                        "System Recommendation: " + refund.getRecommendedResolution());
+                }
+            } catch (Exception ignored) {}
+        }
+
         notifications.send(b.getCustomer(), NotificationType.BOOKING, "Booking cancelled",
                 "Your " + b.getService() + " booking was cancelled.");
         if (b.getWorker() != null) {
@@ -296,7 +387,55 @@ public class BookingController {
         refund.setBookingId(b.getId());
         refund.setRequestedAmount(java.math.BigDecimal.valueOf(b.getPaymentAmountPaise(), 2));
         refund.setReason(x.reason().trim());
-        returns.save(refund);
+        refund.setCancellationStage(b.getCancellationStage());
+        refund.setCancellationReason(b.getCancellationReason());
+        refund = returns.save(refund);
+
+        // Apply refund rules engine to calculate recommendation
+        int serviceDeliveredPercent = 0;
+        if ("DURING_SERVICE".equals(b.getCancellationStage()) || b.getStartOtpHash() != null) {
+            serviceDeliveredPercent = 50;
+        }
+        if (b.getEndOtpHash() != null) {
+            serviceDeliveredPercent = 100;
+        }
+        int amountPaise = b.getPaymentAmountPaise();
+        RefundRulesEngine.RefundRecommendation recommendation =
+            refundRulesEngine.evaluate(
+                x.reason(),
+                b,
+                amountPaise,
+                serviceDeliveredPercent,
+                b.getCancellationReason(),
+                null,
+                b.getCancellationStage());
+
+        // Populate recommendation fields on the refund request
+        refund.setFaultType(recommendation.faultType());
+        refund.setSeverity(recommendation.severity());
+        refund.setRecommendedResolution(recommendation.recommendedResolution());
+        refund.setRecommendedRefundPercentage(recommendation.recommendedRefundPercentage());
+        refund.setRecommendedRefundAmountPaise(recommendation.recommendedRefundAmountPaise());
+        refund.setEvidenceRequired(recommendation.evidenceRequired());
+        refund.setRecommendationReason(recommendation.recommendationReason());
+        refund.setSystemRecommendationAt(Instant.now());
+        refund = returns.save(refund);
+
+        // Send admin email notification (try-catched inside service, will never fail refund)
+        refundNotifications.notifyAdminOnRefundCreated(refund, b, u);
+
+        // Record in-app notification for admin dashboard
+        try {
+            var admin = users.findByRole(Role.ADMIN, PageRequest.of(0, 1)).stream().findFirst().orElse(null);
+            if (admin != null) {
+                notifications.send(admin, NotificationType.OPERATIONS, "New Refund Request - RR-" + refund.getId(),
+                    "Refund Request ID: RR-" + refund.getId() + "\n" +
+                    "Booking ID: BK-" + refund.getBookingId() + "\n" +
+                    "Customer: " + u.getName() + "\n" +
+                    "System Recommendation: " + refund.getRecommendedResolution());
+            }
+        } catch (Exception ignored) {}
+
         notifications.send(u, NotificationType.BOOKING, "Refund request submitted",
                 "Your refund request is awaiting admin review.");
         return view(b);
@@ -513,9 +652,14 @@ public class BookingController {
         result.put("worker", b.getWorker() == null ? "Unassigned" : b.getWorker().getName());
         result.put("rating", b.getRating() == null ? 0 : b.getRating());
         result.put("cancellationReason", b.getCancellationReason());
+        result.put("cancellationStage", b.getCancellationStage());
+        result.put("cancelledBy", b.getCancelledBy());
+        result.put("cancelledAt", b.getCancelledAt() == null ? null : b.getCancelledAt().toString());
+        result.put("cancellationDetails", b.getCancellationDetails());
         returns.findTopByBookingIdOrderByCreatedAtDesc(b.getId()).ifPresentOrElse(refund -> {
             result.put("refundStatus", refund.getStatus());
-            result.put("refundAmountPaise", refund.getRequestedAmount().movePointRight(2).intValue());
+            java.math.BigDecimal amount = refund.getApprovedAmount() != null ? refund.getApprovedAmount() : refund.getRequestedAmount();
+            result.put("refundAmountPaise", amount != null ? amount.movePointRight(2).intValue() : 0);
             result.put("refundAdminNote", refund.getAdminNote() == null ? "" : refund.getAdminNote());
         }, () -> {
             result.put("refundStatus", "");
@@ -535,7 +679,7 @@ public class BookingController {
                   @NotBlank @Pattern(regexp = "\\d{6}") String pinCode, @NotBlank String scheduledFor,
                   Integer durationMinutes, String optionLabel, String promoCode, String specialInstructions) {}
     record Assign(@NotNull Long workerId) {}
-    record Reason(@NotBlank String reason) {}
+    record Reason(@NotBlank String reason, String details) {}
     record Slot(@NotBlank String scheduledFor) {}
     record RefundInput(@NotBlank String reason) {}
     record Otp(@Pattern(regexp = "\\d{6}") String code) {}

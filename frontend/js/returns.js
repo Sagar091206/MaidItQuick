@@ -132,10 +132,13 @@ registerModule("returns", (el) => {
 
   function openDetails(row) {
     const p = row;
+    const hasRecommendation = Boolean(p.recommendedResolution || p.faultType);
+    const recAmount = p.recommendedRefundAmountPaise != null ? (p.recommendedRefundAmountPaise / 100) : p.requestedAmount;
     const footer = `
       <button class="btn btn-ghost" data-close>Close</button>
       ${canWrite && p.status === "REQUESTED" ? `
         <button class="btn btn-danger" data-reject>${icon("i-alert")} Reject</button>
+        <button class="btn btn-ghost" data-modify style="border:1px solid var(--border)">${icon("i-edit")} Modify Amount</button>
         <button class="btn btn-success" data-approve>${icon("i-check")} Approve</button>` : ""}
       ${canWrite && p.status === "APPROVED" ? `<button class="btn btn-primary" data-refund>${icon("i-returns")} Mark Refunded</button>` : ""}`;
     openModal({
@@ -143,36 +146,122 @@ registerModule("returns", (el) => {
       body: `
         <div class="kv-grid" style="margin-bottom:14px">
           <div class="kv"><span>Booking</span><strong class="mono">#${p.bookingId}</strong></div>
+          <div class="kv"><span>Customer</span><strong>${escapeHtml(p.customerName || "—")}</strong></div>
+          <div class="kv"><span>Partner</span><strong>${escapeHtml(p.partnerName || "Unassigned")}</strong></div>
           <div class="kv"><span>Service</span><strong>${escapeHtml(p.serviceName || "—")}</strong></div>
-          <div class="kv"><span>Requested amount</span><strong>${money(p.requestedAmount)}</strong></div>
+          <div class="kv"><span>Amount Paid / Requested</span><strong>${money(p.requestedAmount)}</strong></div>
           <div class="kv"><span>Status</span><strong>${badge(p.status)}</strong></div>
+          ${p.cancellationStage ? `<div class="kv"><span>Cancellation Stage</span><strong class="mono" style="color:var(--primary)">${escapeHtml(p.cancellationStage)}</strong></div>` : ""}
+          ${p.cancellationReason ? `<div class="kv"><span>Cancellation Reason</span><strong>${escapeHtml(p.cancellationReason)}</strong></div>` : ""}
           <div class="kv" style="grid-column:1/-1"><span>Reason</span><strong>${escapeHtml(p.reason || "—")}</strong></div>
           ${p.adminNote ? `<div class="kv" style="grid-column:1/-1"><span>Admin note</span><strong>${escapeHtml(p.adminNote)}</strong></div>` : ""}
           <div class="kv"><span>Requested at</span><strong>${fmtDateTime(p.createdAt)}</strong></div>
           <div class="kv"><span>Decided at</span><strong>${p.decidedAt ? fmtDateTime(p.decidedAt) : "—"}</strong></div>
-        </div>`,
+          ${p.approvedAmount != null ? `<div class="kv"><span>Approved Refund Amount</span><strong style="color:var(--success)">${money(p.approvedAmount)}</strong></div>` : ""}
+          ${p.decidedBy ? `<div class="kv"><span>Decided by</span><strong>${escapeHtml(p.decidedBy)}</strong></div>` : ""}
+        </div>
+        ${hasRecommendation ? `
+          <div style="margin-top:14px;padding:12px;background:var(--card,#fff);border:1px solid var(--border,#e2e8f0);border-radius:8px">
+            <div style="font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:var(--primary);margin-bottom:10px;display:flex;align-items:center;gap:6px">
+              ${icon("i-info")} System Recommendation (Advisory)
+            </div>
+            <div class="kv-grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px">
+              <div class="kv"><span>Fault Type</span><strong style="color:var(--text)">${escapeHtml(p.faultType || "Unclassified")}</strong></div>
+              <div class="kv"><span>Severity</span><strong style="text-transform:capitalize">${escapeHtml(p.severity || "—")}</strong></div>
+              <div class="kv"><span>Service Delivered</span><strong>${p.serviceDeliveredPercent != null ? p.serviceDeliveredPercent + "%" : "0%"}</strong></div>
+              <div class="kv"><span>Recommended Resolution</span><strong style="color:var(--primary)">${escapeHtml(p.recommendedResolution || "—")}</strong></div>
+              <div class="kv"><span>Recommended Refund %</span><strong>${p.recommendedRefundPercentage != null ? p.recommendedRefundPercentage + "%" : "—"}</strong></div>
+              <div class="kv"><span>Recommended Amount</span><strong>${p.recommendedRefundAmountPaise != null ? money(p.recommendedRefundAmountPaise / 100) : "—"}</strong></div>
+              <div class="kv"><span>Evidence Review</span><strong style="color:${p.evidenceRequired ? 'var(--warning,#d97706)' : 'inherit'}">${p.evidenceRequired ? 'Required' : 'Not Required'}</strong></div>
+              <div class="kv" style="grid-column:1/-1"><span>Recommendation Reason</span><strong style="font-weight:normal;color:var(--text-muted)">${escapeHtml(p.recommendationReason || "—")}</strong></div>
+            </div>
+          </div>` : ""}`,
       footer,
       size: "lg",
     });
     const overlay = [...document.querySelectorAll(".modal-overlay")].at(-1);
     overlay.querySelector("[data-close]").addEventListener("click", closeTopModal);
-    overlay.querySelector("[data-approve]")?.addEventListener("click", () => decide(p, "APPROVED"));
+    overlay.querySelector("[data-approve]")?.addEventListener("click", () => decide(p, "APPROVED", recAmount));
+    overlay.querySelector("[data-modify]")?.addEventListener("click", () => modifyAndApprove(p));
     overlay.querySelector("[data-reject]")?.addEventListener("click", () => decide(p, "REJECTED"));
     overlay.querySelector("[data-refund]")?.addEventListener("click", () => decide(p, "REFUNDED"));
   }
 
-  async function decide(row, status) {
+  async function modifyAndApprove(row) {
+    const defaultAmount = row.recommendedRefundAmountPaise != null
+        ? (row.recommendedRefundAmountPaise / 100).toFixed(2)
+        : Number(row.requestedAmount || 0).toFixed(2);
+    const body = `
+      <div class="field">
+        <label class="req" for="rt-amount">Modified Refund Amount (₹)</label>
+        <input class="input" id="rt-amount" type="number" step="0.01" min="0.01" max="${row.requestedAmount}" value="${defaultAmount}" />
+        <div class="field-error hidden" id="rt-amount-err"></div>
+      </div>
+      <div class="field">
+        <label class="req" for="rt-modify-note">Admin Override Reason / Note</label>
+        <textarea class="textarea" id="rt-modify-note" rows="3" maxlength="1000" placeholder="State reason for overriding the recommendation..."></textarea>
+        <div class="field-error hidden" id="rt-note-err"></div>
+      </div>`;
+    const result = await new Promise((resolve) => {
+      openModal({
+        title: `Modify & Approve Return #${row.id}`,
+        body,
+        footer: `<button class="btn btn-ghost" data-close>Cancel</button>
+                 <button class="btn btn-success" data-submit>${icon("i-check")} Approve Modified</button>`,
+      });
+      const ov = [...document.querySelectorAll(".modal-overlay")].at(-1);
+      ov.querySelector("[data-close]").addEventListener("click", closeTopModal);
+      ov.querySelector("[data-submit]").addEventListener("click", () => {
+        const amt = parseFloat(ov.querySelector("#rt-amount").value);
+        const note = ov.querySelector("#rt-modify-note").value.trim();
+        let valid = true;
+        if (isNaN(amt) || amt <= 0) {
+          ov.querySelector("#rt-amount-err").textContent = "Enter a valid positive amount.";
+          ov.querySelector("#rt-amount-err").classList.remove("hidden");
+          valid = false;
+        } else {
+          ov.querySelector("#rt-amount-err").classList.add("hidden");
+        }
+        if (!note) {
+          ov.querySelector("#rt-note-err").textContent = "An admin override reason is required.";
+          ov.querySelector("#rt-note-err").classList.remove("hidden");
+          valid = false;
+        } else {
+          ov.querySelector("#rt-note-err").classList.add("hidden");
+        }
+        if (!valid) return;
+        closeTopModal();
+        resolve({ amount: amt, note });
+      });
+    });
+    if (!result) return;
+    try {
+      await api.patch(`/returns/${row.id}/status`, {
+        status: "APPROVED",
+        note: result.note,
+        approvedAmount: result.amount
+      });
+      toast(`Return #${row.id} approved with modified amount ₹${result.amount}`, "success");
+      closeTopModal();
+      load();
+    } catch (err) {
+      toast(errorMessage(err), "error");
+    }
+  }
+
+  async function decide(row, status, defaultAmount) {
     let note = "";
     if (status !== "REFUNDED") {
+      const recAmtText = defaultAmount != null ? ` for ${money(defaultAmount)}` : "";
       const body = `
         <div class="field">
-          <label class="${status === "REJECTED" ? "req" : ""}" for="rt-note">${status === "REJECTED" ? "Rejection reason" : "Admin note"}</label>
-          <textarea class="textarea" id="rt-note" rows="3" maxlength="1000" placeholder="${status === "REJECTED" ? "e.g. No evidence of defect provided" : "Optional note"}""></textarea>
+          <label class="${status === "REJECTED" ? "req" : ""}" for="rt-note">${status === "REJECTED" ? "Rejection reason" : "Admin note (optional)"}</label>
+          <textarea class="textarea" id="rt-note" rows="3" maxlength="1000" placeholder="${status === "REJECTED" ? "e.g. No evidence of defect provided" : "Optional note"}"></textarea>
           <div class="field-error hidden" id="rt-err"></div>
         </div>`;
       const approved = await new Promise((resolve) => {
         openModal({
-          title: `${status === "REJECTED" ? "Reject" : "Approve"} return #${row.id}?`,
+          title: `${status === "REJECTED" ? "Reject" : "Approve"} return #${row.id}${status === "APPROVED" ? recAmtText : ""}?`,
           body,
           footer: `<button class="btn btn-ghost" data-close>Cancel</button>
                    <button class="btn ${status === "REJECTED" ? "btn-danger" : "btn-success"}" data-submit>${status === "REJECTED" ? "Reject" : "Approve"}</button>`,
@@ -194,7 +283,11 @@ registerModule("returns", (el) => {
       if (!approved) return;
     }
     try {
-      await api.patch(`/returns/${row.id}/status`, { status, note: note || null });
+      const payload = { status, note: note || null };
+      if (status === "APPROVED" && defaultAmount != null) {
+        payload.approvedAmount = defaultAmount;
+      }
+      await api.patch(`/returns/${row.id}/status`, payload);
       toast(`Return #${row.id} ${status.toLowerCase()}`, "success");
       closeTopModal();
       load();

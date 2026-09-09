@@ -140,12 +140,6 @@ class _MvpHomeScreenState extends State<MvpHomeScreen> {
     if (mounted) await _loadDashboard();
   }
 
-  void _showMessage(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
-    }
-  }
 
   List<ServiceCategory> get _filteredServices {
     final dashboard = _dashboard;

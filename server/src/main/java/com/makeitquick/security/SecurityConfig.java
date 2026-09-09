@@ -42,6 +42,7 @@ public class SecurityConfig {
             "/api/maps/browser-key",
             "/api/availability/**",
             "/api/services/**",
+            "/api/support/scenarios",
             // admin public auth surface
             "/api/v1/admin/login",
             "/api/v1/admin/refresh-token",

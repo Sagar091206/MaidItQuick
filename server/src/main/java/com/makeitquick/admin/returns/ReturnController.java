@@ -55,11 +55,12 @@ public class ReturnController {
       if (!status.isBlank()) ands.add(cb.equal(root.get("status"), status));
       if (!query.isBlank()) {
         String like = "%" + query.trim().toLowerCase() + "%";
-        ands.add(cb.like(cb.lower(root.get("reason")), like));
+        Predicate reasonLike = cb.like(cb.lower(root.get("reason")), like);
         try {
-          ands.add(cb.equal(root.get("bookingId"), Long.parseLong(query.trim())));
+          long num = Long.parseLong(query.trim());
+          ands.add(cb.or(reasonLike, cb.equal(root.get("bookingId"), num), cb.equal(root.get("id"), num)));
         } catch (NumberFormatException ignored) {
-          ands.add(cb.equal(root.get("id"), -1L));
+          ands.add(reasonLike);
         }
       }
       return cb.and(ands.toArray(new Predicate[0]));
@@ -70,11 +71,30 @@ public class ReturnController {
 
   private ReturnView toView(ReturnRequest r) {
     Booking b = r.getBookingId() == null ? null : bookings.findById(r.getBookingId()).orElse(null);
-    return new ReturnView(r.getId(), r.getBookingId(),
+    String partnerName = (b != null && b.getWorker() != null) ? b.getWorker().getName() : "Unassigned";
+    String stage = r.getCancellationStage() != null ? r.getCancellationStage() : (b != null ? b.getCancellationStage() : null);
+    String cancelReason = r.getCancellationReason() != null ? r.getCancellationReason() : (b != null ? b.getCancellationReason() : null);
+    return new ReturnView(
+        r.getId(), r.getBookingId(),
         b == null || b.getCustomer() == null ? "—" : b.getCustomer().getName(),
         b == null || b.getService() == null ? "—" : b.getService(),
         r.getRequestedAmount(), r.getReason(), r.getStatus(), r.getAdminNote(),
-        r.getCreatedAt(), r.getDecidedAt());
+        r.getCreatedAt(), r.getDecidedAt(),
+        r.getFaultType(),
+        r.getSeverity(),
+        r.getServiceDeliveredPercent(),
+        r.getRecommendedResolution(),
+        r.getRecommendedRefundPercentage(),
+        r.getRecommendedRefundAmountPaise(),
+        r.getRecommendationReason(),
+        r.getSystemRecommendationAt(),
+        r.getEvidenceRequired() != null && r.getEvidenceRequired(),
+        partnerName,
+        r.getApprovedAmount(),
+        r.getDecidedBy(),
+        stage,
+        cancelReason
+    );
   }
 
   @GetMapping("/pending-count")
@@ -119,6 +139,16 @@ public class ReturnController {
     }
     r.setStatus(input.status());
     r.setAdminNote(input.note());
+    if (input.approvedAmount() != null) {
+      r.setApprovedAmount(input.approvedAmount());
+    } else if ("APPROVED".equals(input.status()) && r.getApprovedAmount() == null) {
+      if (r.getRecommendedRefundAmountPaise() != null) {
+        r.setApprovedAmount(BigDecimal.valueOf(r.getRecommendedRefundAmountPaise(), 2));
+      } else {
+        r.setApprovedAmount(r.getRequestedAmount());
+      }
+    }
+    r.setDecidedBy(req.getUserPrincipal() != null ? req.getUserPrincipal().getName() : "admin");
     r.setDecidedAt(Instant.now());
     r.setUpdatedAt(Instant.now());
     ReturnRequest saved = returns.save(r);
@@ -132,7 +162,7 @@ public class ReturnController {
       notifications.send(booking.getCustomer(), NotificationType.BOOKING, "Refund update", message);
     });
     audit.record("RETURN_STATUS_CHANGED", "RETURNS", String.valueOf(id), null,
-        "{\"status\":\"" + saved.getStatus() + "\"}", req);
+        "{\"status\":\"" + saved.getStatus() + "\",\"approvedAmount\":" + saved.getApprovedAmount() + "}", req);
     return ApiResponse.ok(saved);
   }
 
@@ -156,12 +186,23 @@ public class ReturnController {
 
   public record StatusChange(
       @NotBlank @Pattern(regexp = "APPROVED|REJECTED|REFUNDED") String status,
-      @Size(max = 1000) String note) {
+      @Size(max = 1000) String note,
+      BigDecimal approvedAmount) {
   }
 
   public record ReturnView(
       Long id, Long bookingId, String customerName, String serviceName,
       BigDecimal requestedAmount, String reason, String status, String adminNote,
-      Instant createdAt, Instant decidedAt) {
+      Instant createdAt, Instant decidedAt,
+      String faultType, String severity, Integer serviceDeliveredPercent,
+      String recommendedResolution, Integer recommendedRefundPercentage,
+      Integer recommendedRefundAmountPaise, String recommendationReason,
+      Instant systemRecommendationAt,
+      Boolean evidenceRequired,
+      String partnerName,
+      BigDecimal approvedAmount,
+      String decidedBy,
+      String cancellationStage,
+      String cancellationReason) {
   }
 }

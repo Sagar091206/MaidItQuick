@@ -62,6 +62,12 @@ app:
   mail:
     enabled: ${MAIL_ENABLED:false}
     from: ${MAIL_FROM:no-reply@maiditquick.local}
+  refund:
+    default-percentage: ${REFUND_DEFAULT_PCT:50}
+    severity-minor-percentage: ${REFUND_MINOR_PCT:15}
+    severity-moderate-percentage: ${REFUND_MODERATE_PCT:35}
+    severity-major-percentage: ${REFUND_MAJOR_PCT:60}
+    severity-critical-percentage: ${REFUND_CRITICAL_PCT:100}
   admin:
     name: ${APP_ADMIN_NAME:MaidItQuick Admin}
     email: ${APP_ADMIN_EMAIL:}
