@@ -38,6 +38,7 @@ export const MODULES = [
   { path: "ledger", label: "Bookings Ledger", group: "More", permission: "BOOKINGS_READ", icon: "i-money" },
   { path: "settlements", label: "Settlements & Payouts", group: "More", permission: "SETTLEMENTS_READ", icon: "i-bank" },
   { path: "escalations", label: "Support & Overrides", group: "More", permission: "DISPUTES_READ", icon: "i-support" },
+  { path: "partner-support", label: "Partner Support", group: "More", permission: "DISPUTES_READ", icon: "i-support" },
   { path: "users", label: "Users", group: "More", permission: "USERS_READ", icon: "i-users" },
   { path: "admins", label: "Admins", group: "More", permission: "ADMINS_MANAGE", icon: "i-admin" },
   { path: "roles", label: "Roles", group: "More", permission: "ROLES_READ", icon: "i-roles" },

@@ -26,7 +26,10 @@ function serviceRows(services, pct) {
   </tr>`).join("");
 }
 
-function serviceForm(service = {}) {
+function serviceForm(service) {
+  // `null` means a new service. Default parameters only cover `undefined`,
+  // so normalise it before reading any service fields.
+  service = service || {};
   return `<form id="catalog-service-form" novalidate><div class="form-grid">
     <div class="field"><label>Service name</label><input class="input" name="name" required maxlength="120" value="${escapeHtml(service.name || "")}"></div>
     <div class="field"><label>Default customer price (₹)</label><input class="input" name="priceRupees" type="number" required min="1" step="1" value="${rupees(service.pricePaise) || ""}"></div>
@@ -46,6 +49,8 @@ async function editService(service, reload) {
     const body = { name: String(data.get("name")).trim(), priceRupees, description: String(data.get("description") || ""), defaultDurationMinutes: Number(data.get("duration")), enabled: data.get("enabled") === "true" };
     try {
       if (service) await rootApi.put(`/api/services/admin/${service.id}`, body);
+      // Creation has always been served from the catalogue root.  Keeping this
+      // URL also lets an already-running server accept new services immediately.
       else await rootApi.post("/api/services", body);
       closeTopModal(); toast("Service saved", "success"); await reload();
     } catch (err) { toast(err.message || "Could not save service", "error"); }
@@ -86,8 +91,11 @@ async function editAreas(service, pct) {
 registerModule("services", async (el) => {
   let services = [], commissionPct = 20;
   const render = () => {
-    el.innerHTML = `${pageHeader("Services", "Control the customer price and availability of every mobile service by PIN code.", `<button class="btn btn-primary" id="add-catalog-service">Add service</button>`)}<div class="card"><div class="card-header"><div><strong>Mobile service catalogue</strong><div class="meta">Workers see customer price less ${commissionPct}% commission.</div></div></div><div class="table-wrap"><table class="table"><thead><tr><th>Service</th><th>Customer price</th><th>Worker gets</th><th>Duration</th><th>Status</th><th class="text-right">Actions</th></tr></thead><tbody>${serviceRows(services, commissionPct)}</tbody></table></div></div>`;
-    document.getElementById("add-catalog-service").addEventListener("click", () => editService(null, reload));
+    el.innerHTML = `${pageHeader("Services", "Control the customer price and availability of every mobile service by PIN code.", `<button type="button" class="btn btn-primary" id="add-catalog-service">Add service</button>`)}<div class="card"><div class="card-header"><div><strong>Mobile service catalogue</strong><div class="meta">Workers see customer price less ${commissionPct}% commission.</div></div></div><div class="table-wrap"><table class="table"><thead><tr><th>Service</th><th>Customer price</th><th>Worker gets</th><th>Duration</th><th>Status</th><th class="text-right">Actions</th></tr></thead><tbody>${serviceRows(services, commissionPct)}</tbody></table></div></div>`;
+    document.getElementById("add-catalog-service").addEventListener("click", (event) => {
+      event.preventDefault();
+      editService(null, reload);
+    });
     el.querySelectorAll("[data-edit]").forEach((button) => button.addEventListener("click", () => editService(services.find((s) => s.id === Number(button.dataset.edit)), reload)));
     el.querySelectorAll("[data-areas]").forEach((button) => button.addEventListener("click", () => editAreas(services.find((s) => s.id === Number(button.dataset.areas)), commissionPct)));
   };
