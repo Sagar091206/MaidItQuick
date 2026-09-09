@@ -2,6 +2,9 @@ package com.makeitquick.support;
 
 public enum TicketStatus {
     OPEN,
+    IN_REVIEW,
     IN_PROGRESS,
-    RESOLVED
+    WAITING_FOR_CUSTOMER,
+    RESOLVED,
+    CLOSED
 }

@@ -49,9 +49,21 @@ class BookingRepository {
     return CustomerBooking.fromJson(payload);
   }
 
-  Future<CustomerBooking> cancel(String token, int id, String reason) async {
-    final payload = Map<String, dynamic>.from(await _api
-        .post('/bookings/$id/cancel', {'reason': reason}, token: token) as Map);
+  Future<CustomerBooking> cancel(
+    String token,
+    int id,
+    String reason, {
+    String? details,
+  }) async {
+    final payload = Map<String, dynamic>.from(await _api.post(
+      '/bookings/$id/cancel',
+      {
+        'reason': reason,
+        if (details != null && details.trim().isNotEmpty)
+          'details': details.trim(),
+      },
+      token: token,
+    ) as Map);
     return CustomerBooking.fromJson(payload);
   }
 
@@ -147,6 +159,10 @@ class CustomerBooking {
     this.startOtpIssued = false,
     this.endOtpIssued = false,
     this.cancellationReason = '',
+    this.cancellationStage = '',
+    this.cancelledBy = '',
+    this.cancelledAt,
+    this.cancellationDetails = '',
     this.refundStatus = '',
     this.refundAmountPaise = 0,
     this.refundAdminNote = '',
@@ -180,6 +196,10 @@ class CustomerBooking {
         worker: json['worker'] as String? ?? '',
         rating: (json['rating'] as num?)?.toInt() ?? 0,
         cancellationReason: json['cancellationReason'] as String? ?? '',
+        cancellationStage: json['cancellationStage'] as String? ?? '',
+        cancelledBy: json['cancelledBy'] as String? ?? '',
+        cancelledAt: json['cancelledAt'] as String?,
+        cancellationDetails: json['cancellationDetails'] as String? ?? '',
         refundStatus: json['refundStatus'] as String? ?? '',
         refundAmountPaise: (json['refundAmountPaise'] as num?)?.toInt() ?? 0,
         refundAdminNote: json['refundAdminNote'] as String? ?? '',
@@ -212,12 +232,17 @@ class CustomerBooking {
   final String worker;
   final int rating;
   final String cancellationReason;
+  final String cancellationStage;
+  final String cancelledBy;
+  final String? cancelledAt;
+  final String cancellationDetails;
   final String refundStatus;
   final int refundAmountPaise;
   final String refundAdminNote;
   final List<BookingEvent> events;
 
   bool get isActive =>
+      status == 'SEARCHING' ||
       status == 'REQUESTED' ||
       status == 'ASSIGNED' ||
       status == 'ACCEPTED' ||
@@ -230,7 +255,14 @@ class CustomerBooking {
   /// Active booking whose payment is still pending and can be completed.
   bool get needsPayment => !isPaid && isActive;
 
-  bool get canCancel => status == 'REQUESTED' || status == 'ASSIGNED';
+  bool get canCancel =>
+      status == 'SEARCHING' ||
+      status == 'REQUESTED' ||
+      status == 'ASSIGNED' ||
+      status == 'ACCEPTED' ||
+      status == 'ON_THE_WAY' ||
+      status == 'ARRIVED' ||
+      status == 'IN_PROGRESS';
 
   bool get canReschedule => status == 'REQUESTED';
 
@@ -253,6 +285,7 @@ class CustomerBooking {
 }
 
 String customerBookingStatusLabel(String status) => switch (status) {
+      'SEARCHING' => 'FINDING PARTNER',
       'ASSIGNED' => 'AWAITING ACCEPTANCE',
       _ => status.replaceAll('_', ' '),
     };

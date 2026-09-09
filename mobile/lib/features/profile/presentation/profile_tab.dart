@@ -17,6 +17,7 @@ class ProfileTab extends StatelessWidget {
     required this.onOpenProfileEditor,
     required this.onOpenSettings,
     required this.onOpenSavedAddresses,
+    required this.onOpenSupport,
   });
 
   final ApiClient api;
@@ -26,6 +27,7 @@ class ProfileTab extends StatelessWidget {
   final VoidCallback onOpenProfileEditor;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenSavedAddresses;
+  final VoidCallback onOpenSupport;
 
   String get _initials {
     final name = profile.name.trim();
@@ -100,6 +102,14 @@ class ProfileTab extends StatelessWidget {
                     title: const Text('Saved addresses'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: onOpenSavedAddresses,
+                  ),
+                  const Divider(),
+                  ListTile(
+                    leading: const Icon(Icons.support_agent_outlined),
+                    title: const Text('Support'),
+                    subtitle: const Text('Get help with your bookings or account'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: onOpenSupport,
                   ),
                   const Divider(),
                   ListTile(

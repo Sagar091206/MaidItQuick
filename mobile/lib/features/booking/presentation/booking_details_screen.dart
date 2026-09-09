@@ -4,6 +4,7 @@ import '../../../core/api_client.dart';
 import '../../../core/brand_theme.dart';
 import '../../../shared/widgets/app_states.dart';
 import '../../auth/data/auth_repository.dart';
+import '../../support/presentation/support_screen.dart';
 import '../data/booking_repository.dart';
 import 'payment_screen.dart';
 
@@ -67,17 +68,27 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
   Future<void> _cancel() async {
     final booking = _booking;
     if (booking == null || !booking.canCancel) return;
-    final reason = await _promptCancelReason();
-    if (reason == null || reason.trim().isEmpty || !mounted) return;
+    final cancelData = await showModalBottomSheet<_CustomerCancellationData>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _CancelCustomerBookingSheet(booking: booking),
+    );
+    if (cancelData == null || !mounted) return;
     setState(() => _busy = true);
     try {
       final updated = await _repository.cancel(
-          widget.session.token, booking.id, reason.trim());
+        widget.session.token,
+        booking.id,
+        cancelData.reason,
+        details: cancelData.details,
+      );
       if (mounted) {
         setState(() => _booking = updated);
         _showMessage('Booking cancelled');
-        if (updated.isPaid && await _confirmRefund(updated) && mounted) {
-          await _requestRefund(updated, reason.trim());
+        if (updated.isPaid && updated.refundStatus.isNotEmpty) {
+          _showMessage('Refund request submitted for admin review.');
+        } else if (updated.isPaid && updated.refundStatus.isEmpty && await _confirmRefund(updated) && mounted) {
+          await _requestRefund(updated, cancelData.reason);
         }
       }
     } on ApiException catch (error) {
@@ -128,37 +139,6 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-  }
-
-  Future<String?> _promptCancelReason() async {
-    _cancelReasonController.clear();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Cancel booking?'),
-        content: TextField(
-          controller: _cancelReasonController,
-          autofocus: true,
-          maxLines: 3,
-          decoration: const InputDecoration(
-            labelText: 'Reason (required)',
-            hintText: 'Tell us why you are cancelling',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Keep booking'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.of(context).pop(_cancelReasonController.text),
-            child: const Text('Cancel booking'),
-          ),
-        ],
-      ),
-    );
-    return result;
   }
 
   Future<void> _reschedule() async {
@@ -339,6 +319,21 @@ class _BookingDetailsScreenState extends State<BookingDetailsScreen> {
       appBar: AppBar(
         title: Text('Booking ${_booking == null ? '' : 'MIQ-${_booking!.id}'}'),
         actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => SupportScreen(
+                    api: widget.api,
+                    session: widget.session,
+                    preselectedBookingId: widget.bookingId,
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(Icons.support_agent_outlined),
+            tooltip: 'Get help',
+          ),
           IconButton(
             onPressed: _loading ? null : _load,
             icon: const Icon(Icons.refresh),
@@ -866,6 +861,8 @@ class _StatusBanner extends StatelessWidget {
 
 String _statusHint(String status) {
   switch (status) {
+    case 'SEARCHING':
+      return 'We are finding an available partner near you.';
     case 'REQUESTED':
       return 'Complete the payment — a partner is assigned automatically after payment.';
     case 'ASSIGNED':
@@ -986,3 +983,176 @@ String _paymentLabel(String paymentStatus) {
       return 'Payment pending';
   }
 }
+
+class _CustomerCancellationData {
+  const _CustomerCancellationData({
+    required this.reason,
+    this.details,
+  });
+
+  final String reason;
+  final String? details;
+}
+
+class _CancelCustomerBookingSheet extends StatefulWidget {
+  const _CancelCustomerBookingSheet({required this.booking});
+
+  final CustomerBooking booking;
+
+  @override
+  State<_CancelCustomerBookingSheet> createState() =>
+      _CancelCustomerBookingSheetState();
+}
+
+class _CancelCustomerBookingSheetState
+    extends State<_CancelCustomerBookingSheet> {
+  static const List<String> _reasons = [
+    'Booked by mistake / duplicate booking',
+    'Plans changed / service no longer required',
+    'Partner is delayed / running late',
+    'Partner requested to cancel',
+    'Partner unreachable / not responding',
+    'Emergency / unexpected situation',
+    'Found alternative service',
+    'Booked wrong time or date',
+    'Incorrect address provided',
+    'Other / specific reason',
+  ];
+
+  String _selectedReason = _reasons.first;
+  final _detailsController = TextEditingController();
+
+  @override
+  void dispose() {
+    _detailsController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        20,
+        20,
+        MediaQuery.viewInsetsOf(context).bottom + 24,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Cancel booking',
+              style: TextStyle(
+                fontSize: 21,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Please tell us why you need to cancel this booking.',
+              style: TextStyle(color: BrandColors.muted),
+            ),
+            const SizedBox(height: 14),
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              initialValue: _selectedReason,
+              decoration: const InputDecoration(
+                labelText: 'Reason for cancellation',
+              ),
+              items: _reasons
+                  .map(
+                    (item) => DropdownMenuItem(
+                      value: item,
+                      child: Text(
+                        item,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => _selectedReason = value);
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _detailsController,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Additional details (optional)',
+                hintText: 'Provide any additional details or context...',
+              ),
+            ),
+            const SizedBox(height: 14),
+            Card(
+              elevation: 0,
+              color: Colors.amber.shade50,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: BorderSide(color: Colors.amber.shade300),
+              ),
+              child: const Padding(
+                padding: EdgeInsets.all(12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      color: Colors.amber,
+                      size: 20,
+                    ),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Cancelling your booking does not automatically guarantee a full refund. Refund eligibility depends on reason, timing, partner status, and company policy. If paid, your request will be reviewed by our team.',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Color(0xFF7A4F01),
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Keep booking'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.red.shade700,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () => Navigator.of(context).pop(
+                      _CustomerCancellationData(
+                        reason: _selectedReason,
+                        details: _detailsController.text.trim().isEmpty
+                            ? null
+                            : _detailsController.text.trim(),
+                      ),
+                    ),
+                    child: const Text('Confirm Cancel'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
