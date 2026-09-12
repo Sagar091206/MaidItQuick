@@ -40,26 +40,18 @@ public class BookingController {
     private final BookingPricingService pricing;
     private final CommissionService commissions;
     private final PasswordEncoder encoder;
-<<<<<<< Updated upstream
     private final RefundRulesEngine refundRulesEngine;
     private final RefundNotificationService refundNotifications;
-=======
->>>>>>> Stashed changes
     private final boolean smsEnabled;
     private final SecureRandom random = new SecureRandom();
 
     BookingController(BookingRepository r, BookingServiceRepository bs, BookingEventRepository events,
                       SessionResolver resolver, UserRepository users, NotificationService n, WorkerSafetyService w,
                       ReturnRepository returns, ServiceAreaService areas, ServiceCatalogService catalog,
-<<<<<<< Updated upstream
                       BookingAssignmentService assigner, BookingPricingService pricing, CommissionService commissions,
                       PasswordEncoder encoder,
                       RefundRulesEngine refundRulesEngine,
                       RefundNotificationService refundNotifications,
-=======
-                      BookingAssignmentService assigner, BookingPricingService pricing,
-                      PasswordEncoder encoder,
->>>>>>> Stashed changes
                       @Value("${app.sms.enabled:false}") boolean smsEnabled) {
         repo = r;
         bookingServices = bs;
@@ -75,11 +67,8 @@ public class BookingController {
         this.pricing = pricing;
         this.commissions = commissions;
         this.encoder = encoder;
-<<<<<<< Updated upstream
         this.refundRulesEngine = refundRulesEngine;
         this.refundNotifications = refundNotifications;
-=======
->>>>>>> Stashed changes
         this.smsEnabled = smsEnabled;
     }
 

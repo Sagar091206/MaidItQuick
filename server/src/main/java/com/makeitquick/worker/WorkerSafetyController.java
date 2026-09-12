@@ -4,11 +4,8 @@ import com.makeitquick.admin.settings.SettingRepository;
 import com.makeitquick.booking.Booking;
 import com.makeitquick.booking.BookingRepository;
 import com.makeitquick.booking.BookingStatus;
-<<<<<<< Updated upstream
 import com.makeitquick.booking.PartnerAvailabilityBookingService;
 import com.makeitquick.booking.ScheduledBookingDispatchService;
-=======
->>>>>>> Stashed changes
 import com.makeitquick.operations.AvailabilityStatus;
 import com.makeitquick.payment.PaymentStatus;
 import com.makeitquick.security.Role;
@@ -63,11 +60,8 @@ public class WorkerSafetyController {
     private final WorkerProfileRepository profiles;
     private final SessionResolver resolver;
     private final BookingRepository bookings;
-<<<<<<< Updated upstream
     private final PartnerAvailabilityBookingService availabilityBookings;
     private final ScheduledBookingDispatchService scheduledDispatch;
-=======
->>>>>>> Stashed changes
     private final SettingRepository settings;
     private final Path uploadDirectory;
 
@@ -75,21 +69,15 @@ public class WorkerSafetyController {
             WorkerProfileRepository profiles,
             SessionResolver resolver,
             BookingRepository bookings,
-<<<<<<< Updated upstream
             PartnerAvailabilityBookingService availabilityBookings,
             ScheduledBookingDispatchService scheduledDispatch,
-=======
->>>>>>> Stashed changes
             SettingRepository settings,
             @Value("${app.uploads.directory:uploads/kyc}") String uploadDirectory) {
         this.profiles = profiles;
         this.resolver = resolver;
         this.bookings = bookings;
-<<<<<<< Updated upstream
         this.availabilityBookings = availabilityBookings;
         this.scheduledDispatch = scheduledDispatch;
-=======
->>>>>>> Stashed changes
         this.settings = settings;
         this.uploadDirectory = Path.of(uploadDirectory).toAbsolutePath().normalize();
     }
@@ -418,18 +406,12 @@ public class WorkerSafetyController {
             if (booking.getStatus() != BookingStatus.COMPLETED
                     || booking.getPaymentStatus() != PaymentStatus.PAID) continue;
             BigDecimal gross = BigDecimal.valueOf(booking.getPaymentAmountPaise(), 2);
-<<<<<<< Updated upstream
             BigDecimal commission = booking.getCommissionPct() == null
                     ? gross.multiply(commissionPct).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP)
                     : BigDecimal.valueOf(booking.getCommissionAmountPaise(), 2);
             BigDecimal net = booking.getCommissionPct() == null
                     ? gross.subtract(commission)
                     : BigDecimal.valueOf(booking.getWorkerPayoutPaise(), 2);
-=======
-            BigDecimal commission = gross.multiply(commissionPct)
-                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-            BigDecimal net = gross.subtract(commission);
->>>>>>> Stashed changes
             Instant earnedAt = booking.getCreatedAt();
             totalEarnings = totalEarnings.add(net);
             completedJobs++;
