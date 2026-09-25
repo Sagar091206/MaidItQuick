@@ -263,14 +263,14 @@ registerModule("escalations", async (el) => {
       title: `Reassign booking #${b.id}`,
       fields: [
         { name: "newPartnerId", label: "Nearby approved partner", type: "select", required: true, options: async () => {
-          const data = unwrap(await api.get(`/overrides/partners/nearby?lat=${lat}&lng=${lng}&excludeId=${b.partner?.id || 0}&limit=10`));
+          const data = unwrap(await api.get(`/overrides/workers/nearby?lat=${lat}&lng=${lng}&excludeId=${b.worker?.id || 0}&limit=10`));
           return (data || []).map((p) => [p.id, `${p.name} (${p.distanceKm.toFixed(1)} km)`]);
         } },
         { name: "reason", label: "Reason (required for audit)", type: "textarea", required: true, max: 500, placeholder: "e.g. Partner unavailable, customer moved area…" },
       ],
       submitLabel: "Reassign booking",
       onInit: async (out) => {
-        const payload = await api.post(`/overrides/bookings/${b.id}/reassign`, { newPartnerId: Number(out.newPartnerId), reason: out.reason });
+        const payload = await api.post(`/overrides/bookings/${b.id}/reassign`, { newWorkerId: Number(out.newPartnerId), reason: out.reason });
         toast(payload?.message || "Booking reassigned", "success");
       },
     });

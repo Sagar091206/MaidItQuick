@@ -48,6 +48,8 @@ public class ResetPasswordService {
 
     @Transactional
     public ResetPasswordResponse redeem(ResetPasswordRequest request, HttpServletRequest http) {
+        com.makeitquick.security.PasswordPolicy.validate(request.newPassword());
+
         ResetToken stored = resets.findByToken(request.token().trim())
                 .filter(ResetToken::valid)
                 .orElse(null);

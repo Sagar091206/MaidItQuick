@@ -64,6 +64,56 @@ function wireToggle(toggleId, inputId, eyeId, pupilId, visibleId) {
 wireToggle("pw-toggle", "password", "pw-eye", "pw-pupil");
 wireToggle("pw-toggle-2", "password-confirm", "pw-eye-2", "pw-pupil-2");
 
+const SPECIAL_CHARS = /[!@#$%^&*]/;
+
+function evaluatePassword(pwd) {
+  return {
+    len: pwd.length >= 8 && pwd.length <= 128,
+    upper: /[A-Z]/.test(pwd),
+    lower: /[a-z]/.test(pwd),
+    num: /\d/.test(pwd),
+    special: SPECIAL_CHARS.test(pwd),
+  };
+}
+
+function updateRequirements() {
+  const pwd = passInput.value || "";
+  const conf = confirmInput.value || "";
+  const reqs = evaluatePassword(pwd);
+
+  function setReq(id, ok) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.toggle("satisfied", ok);
+    el.classList.toggle("not-satisfied", !ok);
+    const icon = el.querySelector(".req-icon");
+    if (icon) icon.textContent = ok ? "✓" : "✗";
+  }
+
+  setReq("req-len", reqs.len);
+  setReq("req-upper", reqs.upper);
+  setReq("req-lower", reqs.lower);
+  setReq("req-num", reqs.num);
+  setReq("req-special", reqs.special);
+
+  const allReqsMet = reqs.len && reqs.upper && reqs.lower && reqs.num && reqs.special;
+  const match = conf.length > 0 && conf === pwd;
+
+  if (conf.length > 0 && !match) {
+    fieldError("confirm-err", "Passwords do not match");
+  } else {
+    fieldError("confirm-err", "");
+  }
+
+  btn.disabled = !(allReqsMet && match);
+}
+
+passInput.addEventListener("input", updateRequirements);
+confirmInput.addEventListener("input", updateRequirements);
+
+// Run initially to ensure proper state on load
+updateRequirements();
+
 function setLoading(loading) {
   btn.disabled = loading;
   if (loading) {
@@ -81,26 +131,21 @@ form.addEventListener("submit", async (e) => {
 
   const password = passInput.value;
   const confirm = confirmInput.value;
+  const reqs = evaluatePassword(password);
+  const allReqsMet = reqs.len && reqs.upper && reqs.lower && reqs.num && reqs.special;
 
-  let valid = true;
-  if (!password) {
-    fieldError("pass-err", "Password is required");
-    valid = false;
-  } else if (password.length < 8) {
-    fieldError("pass-err", "Password must be at least 8 characters");
-    valid = false;
-  } else if (password.length > 128) {
-    fieldError("pass-err", "Password must be at most 128 characters");
-    valid = false;
+  if (!allReqsMet) {
+    fieldError("pass-err", "Please meet all password requirements");
+    return;
   }
   if (!confirm) {
     fieldError("confirm-err", "Please repeat the password");
-    valid = false;
-  } else if (confirm !== password) {
-    fieldError("confirm-err", "Passwords do not match");
-    valid = false;
+    return;
   }
-  if (!valid) return;
+  if (confirm !== password) {
+    fieldError("confirm-err", "Passwords do not match");
+    return;
+  }
 
   setLoading(true);
   try {

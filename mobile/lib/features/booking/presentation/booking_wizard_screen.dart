@@ -430,7 +430,17 @@ class _BookingWizardScreenState extends State<BookingWizardScreen> {
     }
   }
 
-  Future<void> _applyPromo() => _loadQuote();
+  Future<void> _applyPromo() async {
+    final code = _promo.text.trim();
+    if (code.isEmpty) {
+      _showMessage('Enter a promo code first.');
+      return;
+    }
+    await _loadQuote();
+    if (mounted && _quote != null && _quote!.discountType == 'PROMO_CODE') {
+      _showMessage('Promo code ${_quote!.promoCode} applied! ${_quote!.discountPercentage}% off.');
+    }
+  }
 
   // ── Validation & creation ─────────────────────────────────────────────────
 
@@ -974,7 +984,11 @@ class _BookingWizardScreenState extends State<BookingWizardScreen> {
                               label: 'Subtotal', value: _quote!.subtotalPaise),
                           if (_quote!.discountPaise > 0)
                             _PriceRow(
-                              label: 'Discount (${_quote!.promoCode})',
+                              label: _quote!.discountType == 'FIRST_ORDER'
+                                  ? 'First-Order Discount (${_quote!.discountPercentage}%)'
+                                  : (_quote!.promoCode.isNotEmpty
+                                      ? 'Promo (${_quote!.promoCode}${_quote!.discountPercentage > 0 ? ' - ${_quote!.discountPercentage}%' : ''})'
+                                      : 'Discount (${_quote!.discountPercentage}%)'),
                               value: -_quote!.discountPaise,
                             ),
                           if (_quote!.taxPaise > 0)

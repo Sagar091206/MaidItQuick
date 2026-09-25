@@ -112,9 +112,12 @@ class ServiceDiscoveryIT {
         assertThat(quote.get("lines").size()).isEqualTo(1);
         assertThat(quote.get("lines").get(0).get("amountPaise").asLong()).isEqualTo(159800);
         assertThat(quote.get("subtotalPaise").asLong()).isEqualTo(159800);
-        assertThat(quote.get("taxPaise").asLong()).isEqualTo(28764);
+        assertThat(quote.get("discountType").asText()).isEqualTo("FIRST_ORDER");
+        assertThat(quote.get("discountPercentage").asInt()).isEqualTo(20);
+        assertThat(quote.get("discountPaise").asLong()).isEqualTo(31960);
+        assertThat(quote.get("taxPaise").asLong()).isEqualTo(23011);
         assertThat(quote.get("convenienceFeePaise").asLong()).isZero();
-        assertThat(quote.get("totalPaise").asLong()).isEqualTo(188564);
+        assertThat(quote.get("totalPaise").asLong()).isEqualTo(150851);
     }
 
     @Test

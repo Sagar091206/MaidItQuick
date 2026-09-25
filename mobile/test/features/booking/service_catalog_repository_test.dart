@@ -25,6 +25,8 @@ class _FakeApi extends ApiClient {
         'subtotalPaise': 159800,
         'promoCode': 'WELCOME50',
         'discountPaise': 5000,
+        'discountType': 'PROMO_CODE',
+        'discountPercentage': 10,
         'totalPaise': 154800,
       };
     }
@@ -83,7 +85,29 @@ void main() {
     expect(quote.lines.first.amountPaise, 159800);
     expect(quote.subtotalPaise, 159800);
     expect(quote.discountPaise, 5000);
+    expect(quote.discountType, 'PROMO_CODE');
+    expect(quote.discountPercentage, 10);
     expect(quote.totalPaise, 154800);
     expect(quote.promoCode, 'WELCOME50');
+  });
+
+  test('BookingQuote parses FIRST_ORDER discount type and percentage', () {
+    final quote = BookingQuote.fromJson(const {
+      'currency': 'INR',
+      'lines': [
+        {'name': 'Deep Cleaning', 'pricePaise': 100000, 'amountPaise': 100000},
+      ],
+      'subtotalPaise': 100000,
+      'discountPaise': 20000,
+      'discountType': 'FIRST_ORDER',
+      'discountPercentage': 20,
+      'taxPaise': 14400,
+      'totalPaise': 94400,
+    });
+    expect(quote.discountType, 'FIRST_ORDER');
+    expect(quote.discountPercentage, 20);
+    expect(quote.discountPaise, 20000);
+    expect(quote.promoCode, '');
+    expect(quote.totalPaise, 94400);
   });
 }

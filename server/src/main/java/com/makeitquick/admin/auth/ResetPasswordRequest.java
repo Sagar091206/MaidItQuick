@@ -1,6 +1,7 @@
 package com.makeitquick.admin.auth;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -15,5 +16,6 @@ public record ResetPasswordRequest(
 
         @NotBlank(message = "New password is required")
         @Size(min = 8, max = 128, message = "New password must be 8 to 128 characters")
+        @Pattern(regexp = com.makeitquick.security.PasswordPolicy.REGEX, message = com.makeitquick.security.PasswordPolicy.ERROR_MESSAGE)
         String newPassword) {
 }

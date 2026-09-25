@@ -43,6 +43,7 @@ public class CustomerExperienceController {
     private final BookingRepository bookings;
     private final ServiceItemRepository services;
     private final ServiceAreaOfferingRepository offerings;
+    private final com.makeitquick.promo.PromotionService promotionService;
 
     CustomerExperienceController(
             SavedAddressRepository addresses,
@@ -50,13 +51,15 @@ public class CustomerExperienceController {
             UserRepository users,
             BookingRepository bookings,
             ServiceItemRepository services,
-            ServiceAreaOfferingRepository offerings) {
+            ServiceAreaOfferingRepository offerings,
+            com.makeitquick.promo.PromotionService promotionService) {
         this.addresses = addresses;
         this.resolver = resolver;
         this.users = users;
         this.bookings = bookings;
         this.services = services;
         this.offerings = offerings;
+        this.promotionService = promotionService;
     }
 
     @GetMapping("/me")
@@ -248,12 +251,19 @@ public class CustomerExperienceController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @Valid @RequestBody PromoInput input) {
         requireCustomer(authorization);
-        String code = input.code().toUpperCase();
-        return switch (code) {
-            case "WELCOME50" -> Map.of("valid", true, "code", code, "discountPaise", 5000, "message", "Rs 50 off");
-            case "MAKEITQUICK100" -> Map.of("valid", true, "code", code, "discountPaise", 10000, "message", "Rs 100 off");
-            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Promo code is invalid");
-        };
+        com.makeitquick.promo.PromoCode promo = promotionService.validatePromoCode(input.code());
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("valid", true);
+        res.put("code", promo.getCode());
+        res.put("discountPercentage", promo.getDiscountPercentage());
+        if (promo.getFixedDiscountPaise() != null && promo.getFixedDiscountPaise() > 0) {
+            res.put("discountPaise", promo.getFixedDiscountPaise());
+            res.put("message", "Rs " + (promo.getFixedDiscountPaise() / 100) + " off");
+        } else {
+            res.put("discountPaise", 0);
+            res.put("message", promo.getDiscountPercentage() + "% off");
+        }
+        return res;
     }
 
     @GetMapping("/referral")

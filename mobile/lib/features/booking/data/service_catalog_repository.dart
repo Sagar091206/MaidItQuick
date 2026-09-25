@@ -147,6 +147,8 @@ class BookingQuote {
     required this.totalPaise,
     this.taxPaise = 0,
     this.convenienceFeePaise = 0,
+    this.discountType = 'NONE',
+    this.discountPercentage = 0,
   });
 
   factory BookingQuote.fromJson(Map<String, dynamic> json) => BookingQuote(
@@ -158,6 +160,8 @@ class BookingQuote {
         subtotalPaise: (json['subtotalPaise'] as num?)?.toInt() ?? 0,
         promoCode: json['promoCode'] as String? ?? '',
         discountPaise: (json['discountPaise'] as num?)?.toInt() ?? 0,
+        discountType: json['discountType'] as String? ?? 'NONE',
+        discountPercentage: (json['discountPercentage'] as num?)?.toInt() ?? 0,
         taxPaise: (json['taxPaise'] as num?)?.toInt() ?? 0,
         convenienceFeePaise:
             (json['convenienceFeePaise'] as num?)?.toInt() ?? 0,
@@ -169,6 +173,8 @@ class BookingQuote {
   final int subtotalPaise;
   final String promoCode;
   final int discountPaise;
+  final String discountType;
+  final int discountPercentage;
   final int taxPaise;
   final int convenienceFeePaise;
   final int totalPaise;
