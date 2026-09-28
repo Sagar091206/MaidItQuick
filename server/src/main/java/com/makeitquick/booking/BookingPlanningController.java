@@ -94,8 +94,8 @@ public class BookingPlanningController {
     /**
      * Server-authoritative itemised quote for the booking summary.
      * Each task contributes pricePaise x (durationMinutes / 60), with a
-     * minimum of one hour per task. Discounts come from validated promo codes;
-     * GST and the convenience fee are added by {@link BookingPricingService}.
+     * minimum of one hour per task. Discounts come from validated promo codes or
+     * eligible first-order discount; GST and the convenience fee are added by {@link BookingPricingService}.
      */
     @GetMapping("/quote")
     public Map<String, Object> quote(
@@ -104,21 +104,22 @@ public class BookingPlanningController {
             @RequestParam @Min(30) @Max(480) int durationMinutes,
             @RequestParam(required = false) @Pattern(regexp = "\\d{6}") String pinCode,
             @RequestParam(required = false) String promoCode) {
-        requireCustomer(authorization);
+        UserAccount customer = requireCustomer(authorization);
         List<String> names = servicesParam.stream()
                 .map(String::trim).filter(name -> !name.isBlank()).distinct().toList();
         if (names.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Choose at least one service");
         }
-        return pricing.quote(names, durationMinutes, promoCode, pinCode);
+        return pricing.quote(names, durationMinutes, promoCode, pinCode, customer);
     }
 
-    private void requireCustomer(String authorization) {
+    private UserAccount requireCustomer(String authorization) {
         UserAccount user = resolver.fromBearer(authorization)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Please sign in"));
         if (user.getRole() != Role.CUSTOMER) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Customer access required");
         }
+        return user;
     }
 
     record DurationInput(List<@NotBlank String> services) {}

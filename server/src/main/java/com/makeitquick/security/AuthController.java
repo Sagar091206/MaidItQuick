@@ -222,6 +222,7 @@ public class AuthController {
 
     @PostMapping("/reset-password")
     public Map<String, String> reset(@Valid @RequestBody Reset x) {
+        PasswordPolicy.validate(x.password());
         ResetToken r = resets.findByToken(x.token())
                 .filter(ResetToken::valid)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired reset token"));
@@ -364,5 +365,7 @@ public class AuthController {
 
     public record EmailRequest(@NotBlank @Email String email) {}
 
-    public record Reset(@NotBlank String token, @Size(min = 8, max = 72) String password) {}
+    public record Reset(
+            @NotBlank String token,
+            @NotBlank @Size(min = 8, max = 128) @Pattern(regexp = PasswordPolicy.REGEX, message = PasswordPolicy.ERROR_MESSAGE) String password) {}
 }

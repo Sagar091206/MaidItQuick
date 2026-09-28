@@ -40,7 +40,6 @@ import java.time.Instant;
 import java.util.List;
 
 @Component
-@ConditionalOnProperty(name = "app.demo-data.enabled", havingValue = "true")
 @Order(30)
 @ConditionalOnProperty(name = "app.demo-data.enabled", havingValue = "true", matchIfMissing = true)
 public class DemoDataSeeder implements CommandLineRunner {
@@ -57,6 +56,7 @@ public class DemoDataSeeder implements CommandLineRunner {
   private final ReturnRepository returns;
   private final SupportRepository support;
   private final PaymentRepository payments;
+  private final com.makeitquick.promo.PromoCodeRepository promoCodes;
   private final Path uploadDir;
 
   public DemoDataSeeder(PartnerRepository partners, UserRepository users,
@@ -64,6 +64,7 @@ public class DemoDataSeeder implements CommandLineRunner {
                         SettingRepository settings, DisputeRepository disputes,
                         ReturnRepository returns, SupportRepository support,
                         PaymentRepository payments,
+                        com.makeitquick.promo.PromoCodeRepository promoCodes,
                         @Value("${app.uploads-dir:uploads}") String uploadsDir) {
     this.partners = partners;
     this.users = users;
@@ -74,6 +75,7 @@ public class DemoDataSeeder implements CommandLineRunner {
     this.returns = returns;
     this.support = support;
     this.payments = payments;
+    this.promoCodes = promoCodes;
     this.uploadDir = Paths.get(uploadsDir).toAbsolutePath().normalize();
   }
 
@@ -81,6 +83,7 @@ public class DemoDataSeeder implements CommandLineRunner {
   @Transactional
   public void run(String... args) throws Exception {
     ensureCommissionSetting();
+    ensurePromotions();
     seedCustomersAndWorkers();
     seedBookingsAndPayments();
     seedDisputes();
@@ -136,6 +139,23 @@ public class DemoDataSeeder implements CommandLineRunner {
     s.setSettingValue("20");
     s.setDescription("Platform commission percentage applied to every booking payout");
     settings.save(s);
+  }
+
+  private void ensurePromotions() {
+    if (!settings.existsBySettingKey("FIRST_ORDER_DISCOUNT_PCT") && !settings.existsBySettingKey("first_order_discount_pct")) {
+      Setting s = new Setting();
+      s.setSettingKey("FIRST_ORDER_DISCOUNT_PCT");
+      s.setSettingValue("20");
+      s.setDescription("First-order discount percentage for newly registered customers");
+      settings.save(s);
+    }
+
+    if (promoCodes.count() == 0) {
+      promoCodes.save(new com.makeitquick.promo.PromoCode("WELCOME20", 20, true, "20% off on your booking"));
+      promoCodes.save(new com.makeitquick.promo.PromoCode("SAVE10", 10, true, "10% discount promo"));
+      promoCodes.save(new com.makeitquick.promo.PromoCode("WELCOME50", 0, 5000, true, "Flat Rs 50 off"));
+      promoCodes.save(new com.makeitquick.promo.PromoCode("MAKEITQUICK100", 0, 10000, true, "Flat Rs 100 off"));
+    }
   }
 
   private void seedCustomersAndWorkers() {

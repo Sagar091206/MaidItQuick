@@ -78,6 +78,20 @@ class AuthRepository {
     });
     return Session.fromJson(Map<String, dynamic>.from(payload as Map));
   }
+
+  Future<void> requestPasswordReset({required String email}) async {
+    await _api.post('/v1/admin/forgot-password', {'email': email});
+  }
+
+  Future<void> resetPassword({
+    required String token,
+    required String newPassword,
+  }) async {
+    await _api.post('/v1/admin/reset-password', {
+      'token': token,
+      'newPassword': newPassword,
+    });
+  }
 }
 
 class OtpChallenge {

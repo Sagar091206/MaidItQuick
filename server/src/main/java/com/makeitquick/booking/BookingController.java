@@ -112,10 +112,13 @@ public class BookingController {
                     "You already have an active booking. Complete or cancel it before booking again.");
         }
         int effectiveDuration = x.durationMinutes() == null ? 60 : x.durationMinutes();
-        int amountPaise = pricing.totalPaise(requested, effectiveDuration, x.promoCode(), x.pinCode());
+        Map<String, Object> quote = pricing.quote(requested, effectiveDuration, x.promoCode(), x.pinCode(), u);
+        int amountPaise = Math.toIntExact((long) quote.get("totalPaise"));
+        int discountPaise = (int) quote.get("discountPaise");
+        String appliedPromo = (String) quote.get("promoCode");
         String serviceLabel = String.join(", ", requested);
         Booking b = repo.save(new Booking(u, serviceLabel, x.address(), x.scheduledFor(), x.pinCode(),
-                x.durationMinutes(), x.optionLabel(), x.promoCode(), pricing.discountPaise(x.promoCode()),
+                x.durationMinutes(), x.optionLabel(), appliedPromo, discountPaise,
                 x.specialInstructions()));
         b.setPaymentAmountPaise(amountPaise);
         repo.save(b);
